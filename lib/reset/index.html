@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>비밀번호 재설정 · 밥메이트</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --primary: #FF6B35;
+      --primary-light: #FFF3EE;
+      --bg: #FAF9F7;
+      --text-primary: #1A1A1A;
+      --text-secondary: #666;
+      --text-light: #999;
+      --border: #E8E4DF;
+      --radius: 14px;
+      --shadow: 0 4px 24px rgba(0,0,0,0.08);
+    }
+
+    body {
+      font-family: -apple-system, 'Pretendard', BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      padding: 40px 36px;
+      width: 100%;
+      max-width: 420px;
+    }
+
+    .icon-box {
+      width: 64px; height: 64px;
+      background: var(--primary-light);
+      border-radius: 18px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 32px;
+      margin-bottom: 24px;
+    }
+
+    h1 {
+      font-size: 26px;
+      font-weight: 900;
+      color: var(--text-primary);
+      letter-spacing: -0.5px;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      font-size: 15px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+      margin-bottom: 36px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+
+    .input-wrap {
+      position: relative;
+      margin-bottom: 16px;
+    }
+
+    input[type="password"] {
+      width: 100%;
+      padding: 14px 48px 14px 16px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 15px;
+      color: var(--text-primary);
+      background: #fff;
+      outline: none;
+      transition: border-color 0.2s;
+      -webkit-appearance: none;
+    }
+
+    input[type="password"]:focus { border-color: var(--primary); }
+
+    .toggle-pw {
+      position: absolute;
+      right: 14px; top: 50%;
+      transform: translateY(-50%);
+      background: none; border: none; cursor: pointer;
+      color: var(--text-light);
+      padding: 4px;
+      display: flex; align-items: center;
+    }
+
+    .toggle-pw svg { width: 20px; height: 20px; }
+
+    .error-box {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      background: rgba(220,50,50,0.06);
+      border: 1px solid rgba(220,50,50,0.2);
+      border-radius: 10px;
+      padding: 10px 14px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      color: #dc3232;
+    }
+
+    .error-box.show { display: flex; }
+
+    .error-box svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+    button[type="submit"] {
+      width: 100%;
+      padding: 16px;
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+      margin-top: 8px;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+
+    button[type="submit"]:active { transform: scale(0.98); }
+    button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .spinner {
+      display: none;
+      width: 20px; height: 20px;
+      border: 2.5px solid rgba(255,255,255,0.4);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── 성공 화면 ── */
+    #success-view {
+      display: none;
+      text-align: center;
+    }
+
+    #success-view .icon-box {
+      background: rgba(34,197,94,0.1);
+      margin: 0 auto 24px;
+    }
+
+    #success-view h1 { text-align: center; }
+    #success-view .subtitle { text-align: center; }
+
+    .open-app-btn {
+      display: block;
+      width: 100%;
+      padding: 16px;
+      background: var(--primary);
+      color: #fff;
+      text-decoration: none;
+      border-radius: var(--radius);
+      font-size: 16px;
+      font-weight: 700;
+      text-align: center;
+      margin-top: 28px;
+      transition: opacity 0.2s;
+    }
+
+    .open-app-btn:hover { opacity: 0.88; }
+
+    /* ── 만료/오류 화면 ── */
+    #expired-view {
+      display: none;
+      text-align: center;
+    }
+
+    #expired-view .icon-box {
+      background: rgba(250,150,0,0.1);
+      margin: 0 auto 24px;
+    }
+
+    /* 로딩 화면 */
+    #loading-view {
+      text-align: center;
+      padding: 20px 0;
+    }
+
+    .loading-spinner {
+      width: 40px; height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin: 0 auto 16px;
+    }
+
+    .brand {
+      text-align: center;
+      font-size: 13px;
+      color: var(--text-light);
+      margin-top: 28px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+
+    <!-- 로딩 -->
+    <div id="loading-view">
+      <div class="loading-spinner"></div>
+      <p style="font-size:15px;color:var(--text-secondary);">인증 확인 중...</p>
+    </div>
+
+    <!-- 비밀번호 입력 폼 -->
+    <div id="form-view" style="display:none;">
+      <div class="icon-box">🔐</div>
+      <h1>새 비밀번호 설정</h1>
+      <p class="subtitle">새로운 비밀번호를 입력해주세요</p>
+
+      <label for="pw">새 비밀번호</label>
+      <div class="input-wrap">
+        <input type="password" id="pw" placeholder="6자 이상 입력해주세요" autocomplete="new-password" />
+        <button type="button" class="toggle-pw" onclick="togglePw('pw', this)" aria-label="비밀번호 표시">
+          <svg id="eye-pw" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+          </svg>
+        </button>
+      </div>
+
+      <label for="pw2">비밀번호 확인</label>
+      <div class="input-wrap">
+        <input type="password" id="pw2" placeholder="비밀번호를 한번 더 입력해주세요" autocomplete="new-password" />
+        <button type="button" class="toggle-pw" onclick="togglePw('pw2', this)" aria-label="비밀번호 표시">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="error-box" id="error-box">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span id="error-msg"></span>
+      </div>
+
+      <button type="submit" id="submit-btn" onclick="submitPassword()">
+        <span id="btn-text">비밀번호 변경하기</span>
+        <div class="spinner" id="spinner"></div>
+      </button>
+    </div>
+
+    <!-- 성공 -->
+    <div id="success-view">
+      <div class="icon-box">🎉</div>
+      <h1>변경 완료!</h1>
+      <p class="subtitle">비밀번호가 성공적으로 변경됐어요.<br/>앱으로 돌아가서 로그인해주세요.</p>
+      <a href="io.supabase.mealmate://login" class="open-app-btn">밥메이트 앱 열기</a>
+    </div>
+
+    <!-- 만료/오류 -->
+    <div id="expired-view">
+      <div class="icon-box">⏰</div>
+      <h1>링크가 만료됐어요</h1>
+      <p class="subtitle">비밀번호 재설정 링크가 만료되었거나<br/>이미 사용된 링크예요.<br/><br/>앱에서 다시 재설정 이메일을 요청해주세요.</p>
+      <a href="io.supabase.mealmate://login" class="open-app-btn">앱으로 돌아가기</a>
+    </div>
+
+    <p class="brand">🍽️ 밥메이트</p>
+  </div>
+
+  <script>
+    // ─── Supabase 초기화 ───
+    const SUPABASE_URL = 'https://uhclywphhbirymmejkyf.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVoY2x5d3BoaGJpcnltbWVqa3lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MjA1ODAsImV4cCI6MjA4OTE5NjU4MH0.yqwdqb8SyU_EYDnKQZ-mCza6lCo58F8sv9-Ph0JMRC8';
+
+    const { createClient } = supabase;
+    const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { detectSessionInUrl: true, flowType: 'pkce' }
+    });
+
+    function show(id) {
+      ['loading-view','form-view','success-view','expired-view'].forEach(v => {
+        document.getElementById(v).style.display = v === id ? 'block' : 'none';
+      });
+    }
+
+    function showError(msg) {
+      const box = document.getElementById('error-box');
+      document.getElementById('error-msg').textContent = msg;
+      box.classList.add('show');
+    }
+
+    function hideError() {
+      document.getElementById('error-box').classList.remove('show');
+    }
+
+    function setLoading(on) {
+      document.getElementById('submit-btn').disabled = on;
+      document.getElementById('btn-text').style.display = on ? 'none' : 'inline';
+      document.getElementById('spinner').style.display = on ? 'block' : 'none';
+    }
+
+    function togglePw(inputId, btn) {
+      const input = document.getElementById(inputId);
+      const isHidden = input.type === 'password';
+      input.type = isHidden ? 'text' : 'password';
+      // 아이콘 교체
+      btn.innerHTML = isHidden
+        ? `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20" height="20">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M13.875 18.825A10.05 10.05 0 0112 19c-4.477 0-8.268-2.943-9.542-7a9.956 9.956 0 012.293-3.95M6.634 6.634A9.956 9.956 0 0112 5c4.477 0 8.268 2.943 9.542 7a10.054 10.054 0 01-4.176 5.191M15 12a3 3 0 11-4.243-4.243M3 3l18 18" />
+           </svg>`
+        : `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="20" height="20">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+           </svg>`;
+    }
+
+    async function submitPassword() {
+      hideError();
+      const pw = document.getElementById('pw').value;
+      const pw2 = document.getElementById('pw2').value;
+
+      if (pw.length < 6) { showError('비밀번호는 6자 이상이어야 해요'); return; }
+      if (pw !== pw2) { showError('비밀번호가 일치하지 않아요'); return; }
+
+      setLoading(true);
+      try {
+        const { error } = await sb.auth.updateUser({ password: pw });
+        if (error) throw error;
+        show('success-view');
+      } catch (e) {
+        setLoading(false);
+        const msg = e?.message || '';
+        if (msg.includes('expired') || msg.includes('invalid')) {
+          show('expired-view');
+        } else {
+          showError(msg || '오류가 발생했어요. 다시 시도해주세요.');
+        }
+      }
+    }
+
+    // Enter 키 지원
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && document.getElementById('form-view').style.display !== 'none') {
+        submitPassword();
+      }
+    });
+
+    // ─── 페이지 로드 시 세션 확인 ───
+    (async () => {
+      try {
+        // URL의 hash/query에서 토큰 자동 처리 (Supabase SDK가 처리)
+        const { data: { session }, error } = await sb.auth.getSession();
+
+        if (error) {
+          console.error('Session error:', error);
+          show('expired-view');
+          return;
+        }
+
+        if (session) {
+          show('form-view');
+        } else {
+          // onAuthStateChange로 passwordRecovery 이벤트 대기
+          const { data: { subscription } } = sb.auth.onAuthStateChange((event, session) => {
+            if (event === 'PASSWORD_RECOVERY') {
+              subscription.unsubscribe();
+              show('form-view');
+            } else if (event === 'SIGNED_IN' && session) {
+              // 이미 로그인된 상태에서 재설정 링크 클릭
+              subscription.unsubscribe();
+              show('form-view');
+            }
+          });
+
+          // 5초 후에도 인증 없으면 만료 처리
+          setTimeout(() => {
+            const current = document.getElementById('loading-view');
+            if (current.style.display !== 'none') {
+              subscription.unsubscribe();
+              show('expired-view');
+            }
+          }, 5000);
+        }
+      } catch (e) {
+        console.error(e);
+        show('expired-view');
+      }
+    })();
+  </script>
+</body>
+</html>
