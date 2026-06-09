@@ -24,6 +24,13 @@ class MeetingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final typeLabel = meeting.type == MeetingType.restaurant
+        ? '\uC2DD\uB2F9'
+        : '\uBC30\uB2EC';
+    final typeIcon = meeting.type == MeetingType.restaurant
+        ? Icons.restaurant_rounded
+        : Icons.delivery_dining_rounded;
+
     return GestureDetector(
       onTap: onTap,
       child: RepaintBoundary(
@@ -35,7 +42,7 @@ class MeetingCard extends StatelessWidget {
             border: Border.all(color: AppColors.divider, width: 1),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.04),
+                color: Colors.black.withValues(alpha: 0.04),
                 blurRadius: 10,
                 offset: const Offset(0, 2),
               ),
@@ -48,10 +55,11 @@ class MeetingCard extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    // 타입 배지
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 9, vertical: 4),
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
                       decoration: BoxDecoration(
                         color: meeting.type == MeetingType.restaurant
                             ? const Color(0xFFE8F4FF)
@@ -61,19 +69,18 @@ class MeetingCard extends StatelessWidget {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            meeting.type == MeetingType.restaurant
-                                ? '🍽️'
-                                : '🛵',
-                            style: const TextStyle(fontSize: 12),
+                          Icon(
+                            typeIcon,
+                            size: 13,
+                            color: meeting.type == MeetingType.restaurant
+                                ? const Color(0xFF1976D2)
+                                : const Color(0xFFE65100),
                           ),
-                          const SizedBox(width: 4),
+                          const SizedBox(width: 3),
                           Text(
-                            meeting.type == MeetingType.restaurant
-                                ? '식당'
-                                : '배달',
+                            typeLabel,
                             style: TextStyle(
-                              fontSize: 11,
+                              fontSize: 10.5,
                               fontWeight: FontWeight.w700,
                               color: meeting.type == MeetingType.restaurant
                                   ? const Color(0xFF1976D2)
@@ -83,47 +90,31 @@ class MeetingCard extends StatelessWidget {
                         ],
                       ),
                     ),
-                    if (meeting.category?.isNotEmpty == true) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 9, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppColors.bgGray,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          meeting.category!,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ),
-                    ],
                     const Spacer(),
-                    // 일치도
                     if (showMatch)
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
                         decoration: BoxDecoration(
                           color: _matchColor(meeting.matchPercent)
-                              .withOpacity(0.12),
+                              .withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.auto_awesome,
-                                size: 12,
-                                color: _matchColor(meeting.matchPercent)),
+                            Icon(
+                              Icons.auto_awesome,
+                              size: 12,
+                              color: _matchColor(meeting.matchPercent),
+                            ),
                             const SizedBox(width: 3),
                             Text(
-                              '찰떡궁합 ${meeting.matchPercent}%',
+                              '\uCC30\uB5A1\uAD81\uD569 ${meeting.matchPercent}%',
                               style: TextStyle(
-                                fontSize: 11,
+                                fontSize: 10.5,
                                 fontWeight: FontWeight.w700,
                                 color: _matchColor(meeting.matchPercent),
                               ),
@@ -136,27 +127,28 @@ class MeetingCard extends StatelessWidget {
                 const SizedBox(height: 12),
                 Text(
                   meeting.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
                     color: AppColors.textPrimary,
-                    letterSpacing: -0.3,
                   ),
                 ),
                 const SizedBox(height: 6),
                 Text(
                   meeting.description,
                   style: const TextStyle(
-                      fontSize: 13,
-                      color: AppColors.textSecondary,
-                      height: 1.4),
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                    height: 1.4,
+                  ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 12),
-                // 태그들
                 Wrap(
-                  spacing: 6,
+                  spacing: 5,
                   runSpacing: 6,
                   children: meeting.tags
                       .map((t) => TagChip(tag: t, small: true))
@@ -173,80 +165,104 @@ class MeetingCard extends StatelessWidget {
                       child: Text(
                         meeting.hostName.isNotEmpty ? meeting.hostName[0] : '?',
                         style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.primary),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primary,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 7),
-                    Text(
-                      meeting.hostName,
-                      style: const TextStyle(
+                    Flexible(
+                      child: Text(
+                        meeting.hostName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
-                          color: AppColors.textPrimary),
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
                     ),
                     const SizedBox(width: 4),
-                    const Text('·',
+                    const Text('\u00B7',
                         style: TextStyle(color: AppColors.textLight)),
                     const SizedBox(width: 4),
-                    Icon(Icons.place_outlined,
-                        size: 13, color: AppColors.textLight),
+                    const Icon(
+                      Icons.place_outlined,
+                      size: 13,
+                      color: AppColors.textLight,
+                    ),
                     const SizedBox(width: 2),
                     Expanded(
                       child: Text(
                         meeting.location,
                         style: const TextStyle(
-                            fontSize: 12, color: AppColors.textLight),
+                          fontSize: 12,
+                          color: AppColors.textLight,
+                        ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    const Spacer(),
-                    // 인원
+                    const SizedBox(width: 8),
                     Row(
                       children: [
-                        Icon(Icons.people_outline,
-                            size: 14, color: AppColors.textSecondary),
+                        const Icon(
+                          Icons.people_outline,
+                          size: 14,
+                          color: AppColors.textSecondary,
+                        ),
                         const SizedBox(width: 3),
                         Text(
                           '${meeting.currentMembers}/${meeting.maxMembers}',
                           style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.textSecondary),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textSecondary,
+                          ),
                         ),
                       ],
                     ),
                     if (meeting.hasDutchPay) ...[
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 7, vertical: 3),
+                          horizontal: 5,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: AppColors.tagBg,
                           borderRadius: BorderRadius.circular(6),
                         ),
-                        child: const Text('더치페이',
-                            style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.primary)),
+                        child: const Text(
+                          '\uB354\uCE58\uD398\uC774',
+                          style: TextStyle(
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.primary,
+                          ),
+                        ),
                       ),
                     ],
                     if (meeting.isJoined) ...[
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 7, vertical: 3),
+                          horizontal: 5,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
-                          color: Colors.green.withOpacity(0.1),
+                          color: Colors.green.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(6),
                         ),
-                        child: const Text('참여중',
-                            style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.green)),
+                        child: const Text(
+                          '\uCC38\uC5EC\uC911',
+                          style: TextStyle(
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.green,
+                          ),
+                        ),
                       ),
                     ],
                   ],

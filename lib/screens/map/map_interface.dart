@@ -1,4 +1,5 @@
 // lib/screens/map/map_interface.dart
-// 웹/모바일 공통 인터페이스
-export 'map_stub.dart'
-    if (dart.library.io) 'map_native.dart';
+//
+// Common map export. Web/unsupported platforms use the stub implementation,
+// while mobile platforms use the native Naver Map implementation.
+export 'map_stub.dart' if (dart.library.io) 'map_native.dart';

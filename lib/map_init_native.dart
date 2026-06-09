@@ -1,4 +1,5 @@
-// lib/map_init_native.dart
+// flutter_naver_map initialization
+import 'package:flutter/foundation.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 
 Future<void> initNaverMap() async {
@@ -8,9 +9,9 @@ Future<void> initNaverMap() async {
     onAuthFailed: (ex) {
       switch (ex) {
         case NUnauthorizedClientException():
-          print('인증 실패 - 클라이언트 ID 또는 패키지명 확인 필요: $ex');
+          debugPrint('Naver Map authentication failed: $ex');
         default:
-          print('네이버 지도 인증 실패: $ex');
+          debugPrint('Naver Map authentication failed: $ex');
       }
     },
   );

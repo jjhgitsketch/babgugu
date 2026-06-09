@@ -42,7 +42,10 @@ class _SignupScreenState extends State<SignupScreen> {
       return;
     }
 
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
 
     try {
       await Supabase.instance.client.auth.signUp(
@@ -84,13 +87,24 @@ class _SignupScreenState extends State<SignupScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('회원가입', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: AppColors.textPrimary, letterSpacing: -1)),
+              const Text('회원가입',
+                  style: TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.textPrimary,
+                      letterSpacing: -1)),
               const SizedBox(height: 8),
-              const Text('밥메이트에 오신 걸 환영해요!', style: TextStyle(fontSize: 16, color: AppColors.textSecondary)),
+              const Text('밥구구에 오신 걸 환영해요!',
+                  style:
+                      TextStyle(fontSize: 16, color: AppColors.textSecondary)),
               const SizedBox(height: 40),
 
               // 이메일
-              const Text('이메일', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
+              const Text('이메일',
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textSecondary)),
               const SizedBox(height: 8),
               TextField(
                 controller: _emailController,
@@ -99,13 +113,18 @@ class _SignupScreenState extends State<SignupScreen> {
                 style: const TextStyle(fontSize: 15),
                 decoration: const InputDecoration(
                   hintText: 'example@email.com',
-                  prefixIcon: Icon(Icons.email_outlined, size: 20, color: AppColors.textLight),
+                  prefixIcon: Icon(Icons.email_outlined,
+                      size: 20, color: AppColors.textLight),
                 ),
               ),
               const SizedBox(height: 16),
 
               // 비밀번호
-              const Text('비밀번호', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
+              const Text('비밀번호',
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textSecondary)),
               const SizedBox(height: 8),
               TextField(
                 controller: _passwordController,
@@ -113,18 +132,27 @@ class _SignupScreenState extends State<SignupScreen> {
                 style: const TextStyle(fontSize: 15),
                 decoration: InputDecoration(
                   hintText: '6자 이상 입력해주세요',
-                  prefixIcon: const Icon(Icons.lock_outline, size: 20, color: AppColors.textLight),
+                  prefixIcon: const Icon(Icons.lock_outline,
+                      size: 20, color: AppColors.textLight),
                   suffixIcon: GestureDetector(
                     onTap: () => setState(() => _obscure = !_obscure),
-                    child: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                        size: 20, color: AppColors.textLight),
+                    child: Icon(
+                        _obscure
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                        size: 20,
+                        color: AppColors.textLight),
                   ),
                 ),
               ),
               const SizedBox(height: 16),
 
               // 비밀번호 확인
-              const Text('비밀번호 확인', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
+              const Text('비밀번호 확인',
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textSecondary)),
               const SizedBox(height: 8),
               TextField(
                 controller: _confirmController,
@@ -133,11 +161,17 @@ class _SignupScreenState extends State<SignupScreen> {
                 onSubmitted: (_) => _signup(),
                 decoration: InputDecoration(
                   hintText: '비밀번호를 한번 더 입력해주세요',
-                  prefixIcon: const Icon(Icons.lock_outline, size: 20, color: AppColors.textLight),
+                  prefixIcon: const Icon(Icons.lock_outline,
+                      size: 20, color: AppColors.textLight),
                   suffixIcon: GestureDetector(
-                    onTap: () => setState(() => _obscureConfirm = !_obscureConfirm),
-                    child: Icon(_obscureConfirm ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                        size: 20, color: AppColors.textLight),
+                    onTap: () =>
+                        setState(() => _obscureConfirm = !_obscureConfirm),
+                    child: Icon(
+                        _obscureConfirm
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                        size: 20,
+                        color: AppColors.textLight),
                   ),
                 ),
               ),
@@ -147,17 +181,23 @@ class _SignupScreenState extends State<SignupScreen> {
                 const SizedBox(height: 12),
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.08),
+                    color: Colors.red.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.red.withOpacity(0.2)),
+                    border:
+                        Border.all(color: Colors.red.withValues(alpha: 0.2)),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.error_outline, size: 16, color: Colors.red),
+                      const Icon(Icons.error_outline,
+                          size: 16, color: Colors.red),
                       const SizedBox(width: 8),
-                      Expanded(child: Text(_error!, style: const TextStyle(fontSize: 13, color: Colors.red))),
+                      Expanded(
+                          child: Text(_error!,
+                              style: const TextStyle(
+                                  fontSize: 13, color: Colors.red))),
                     ],
                   ),
                 ),
@@ -170,7 +210,11 @@ class _SignupScreenState extends State<SignupScreen> {
                 child: ElevatedButton(
                   onPressed: _loading ? null : _signup,
                   child: _loading
-                      ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                              color: Colors.white, strokeWidth: 2))
                       : const Text('가입하기'),
                 ),
               ),

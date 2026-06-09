@@ -1,14 +1,15 @@
 // lib/screens/settlement_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import '../models/models.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import 'review_screen.dart';
 
 class SettlementScreen extends StatefulWidget {
   final MeetingModel meeting;
   final bool isHost;
-  final String? settlementId;
   final int totalAmount;
   final String bankInfo;
   final List<String> memberNames;
@@ -17,9 +18,8 @@ class SettlementScreen extends StatefulWidget {
     super.key,
     required this.meeting,
     required this.isHost,
-    this.settlementId,
     this.totalAmount = 0,
-    this.bankInfo = '',
+    this.bankInfo = '신한은행 1000-000-000001',
     this.memberNames = const [],
   });
 
@@ -28,438 +28,332 @@ class SettlementScreen extends StatefulWidget {
 }
 
 class _SettlementScreenState extends State<SettlementScreen> {
-  bool _loading = false;
-  bool _showDetail = false;
-  bool _editingBank = false;
-  late TextEditingController _bankController;
-  late String _bankInfo;
-  late List<_Member> _members;
-  int _totalAmount = 0;
-  int _perPersonAmount = 0;
-  DateTime? _createdAt;
+  late final List<_SettlementMember> _members;
+  late final DateTime _requestedAt;
+  bool _showSummary = true;
 
-  static const _colors = [
-    Colors.black87,
-    Color(0xFF7B52AB),
-    Color(0xFFFFB347),
-    Color(0xFF4CAF50),
-    Color(0xFF2196F3),
-    AppColors.primary,
-  ];
+  int get _memberCount => _members.isEmpty ? 1 : _members.length;
+  int get _totalAmount => widget.totalAmount > 0 ? widget.totalAmount : 0;
+  bool get _allPaid =>
+      _members.every((member) => member.status == _PayStatus.done);
 
   @override
   void initState() {
     super.initState();
-    _bankInfo = widget.bankInfo;
-    _bankController = TextEditingController(text: _bankInfo);
-    _members = [];
-    _loadInitialData();
+    _requestedAt = DateTime.now();
+    final fallbackName = currentUser?.name ?? '모임 멤버';
+    final names = widget.memberNames.isEmpty
+        ? <String>[fallbackName]
+        : widget.memberNames;
+    final perPersonAmount =
+        names.isEmpty ? 0 : (_totalAmount / names.length).round();
+    _members = names
+        .map((name) => _SettlementMember(
+              name: name.trim().isEmpty ? '모임 멤버' : name.trim(),
+              amount: perPersonAmount,
+              status: _PayStatus.pending,
+            ))
+        .toList();
   }
 
-  Future<void> _loadInitialData() async {
-    _loadFallbackData();
-    if (widget.settlementId == null) return;
+  void _confirmPayment(int index) {
+    if (!widget.isHost) return;
+    setState(() {
+      _members[index] = _members[index].copyWith(status: _PayStatus.done);
+    });
+  }
 
-    setState(() => _loading = true);
+  Future<void> _requestPaymentCheck(int index) async {
+    if (widget.isHost) return;
+    final member = _members[index];
+    if (member.status != _PayStatus.pending) return;
+
+    setState(() {
+      _members[index] = member.copyWith(status: _PayStatus.requested);
+    });
+
     try {
-      final settlement =
-          await SupabaseService.getSettlement(widget.settlementId!);
-      final members =
-          await SupabaseService.getSettlementMembers(widget.settlementId!);
-      if (settlement == null) return;
-
-      final total = settlement['total_amount'] as int? ?? 0;
-      final perPerson = settlement['per_person_amount'] as int? ??
-          (members.isEmpty ? 0 : (total / members.length).round());
-      final bank = settlement['bank_info'] as String? ?? '';
-      final createdAtText = settlement['created_at'] as String?;
-
-      setState(() {
-        _totalAmount = total;
-        _perPersonAmount = perPerson;
-        _bankInfo = bank;
-        _bankController.text = bank;
-        _createdAt =
-            createdAtText == null ? null : DateTime.tryParse(createdAtText);
-        _members = members.asMap().entries.map((entry) {
-          final i = entry.key;
-          final row = entry.value;
-          return _Member(
-            userId: row['user_id'] as String? ?? '',
-            name: row['user_name'] as String? ?? '멤버',
-            amount: row['amount'] as int? ?? perPerson,
-            status: _PayStatus.fromDb(row['status'] as String?),
-            color: _colors[i % _colors.length],
-          );
-        }).toList();
-      });
+      await SupabaseService.sendMessage(
+        meetingId: widget.meeting.id,
+        text: '입금 확인 요청\nmember:${currentUser?.name ?? member.name}',
+        type: 'paymentConfirmRequest',
+      );
+      _showSnackBar('모임장에게 입금 확인 요청을 보냈어요.');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('정산 정보를 불러오지 못했어요: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _loading = false);
+      setState(() {
+        _members[index] = member;
+      });
+      _showSnackBar('요청을 보내지 못했어요: $e');
     }
   }
 
-  void _loadFallbackData() {
-    final names = widget.memberNames.isNotEmpty ? widget.memberNames : ['멤버'];
-    final total = widget.totalAmount;
-    final perPerson = names.isEmpty ? 0 : (total / names.length).round();
+  void _copyBankInfo() {
+    Clipboard.setData(ClipboardData(text: widget.bankInfo));
+    _showSnackBar('계좌번호가 복사되었어요.');
+  }
 
-    _totalAmount = total;
-    _perPersonAmount = perPerson;
-    _members = List.generate(
-      names.length,
-      (i) => _Member(
-        userId: '',
-        name: names[i].trim().isEmpty ? '멤버' : names[i].trim(),
-        amount: perPerson,
-        status: _PayStatus.requested,
-        color: _colors[i % _colors.length],
+  void _showSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _finishSettlement() async {
+    final reviewed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ReviewScreen(meeting: widget.meeting),
+        fullscreenDialog: true,
       ),
     );
-  }
-
-  Future<void> _handleStatusTap(int index) async {
-    final member = _members[index];
-    final settlementId = widget.settlementId;
-    final isMine = member.userId == SupabaseService.userId;
-
-    if (settlementId == null || member.userId.isEmpty) {
-      if (!widget.isHost) return;
-      setState(() {
-        _members[index] = member.copyWith(status: _PayStatus.confirmed);
-      });
-      return;
-    }
-
-    final nextStatus = widget.isHost
-        ? _PayStatus.confirmed
-        : isMine && member.status == _PayStatus.requested
-            ? _PayStatus.paid
-            : null;
-    if (nextStatus == null || member.status == _PayStatus.confirmed) return;
-
-    try {
-      await SupabaseService.updateSettlementMemberStatus(
-        settlementId: settlementId,
-        memberUserId: member.userId,
-        status: nextStatus.dbValue,
-      );
-      await SupabaseService.syncSettlementStatus(settlementId);
-      setState(() {
-        _members[index] = member.copyWith(status: nextStatus);
-      });
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('정산 상태를 변경하지 못했어요: $e')),
-        );
-      }
-    }
-  }
-
-  String get _createdAtLabel {
-    final dt = _createdAt?.toLocal();
-    if (dt == null) return '-';
-    return '${dt.year}.${dt.month.toString().padLeft(2, '0')}.${dt.day.toString().padLeft(2, '0')} '
-        '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-  }
-
-  @override
-  void dispose() {
-    _bankController.dispose();
-    super.dispose();
+    if (!mounted) return;
+    Navigator.pop(context, reviewed == true);
   }
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final contentWidth = screenWidth.clamp(0, 360).toDouble();
+
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('정산 확인'),
+        centerTitle: true,
+        title: const Text(
+          '정산 확인',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: AppColors.divider),
+          child: Container(height: 1, color: const Color(0xFFDADADA)),
         ),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildSummaryCard(),
-                  const SizedBox(height: 24),
-                  RichText(
-                    text: const TextSpan(
-                      style:
-                          TextStyle(fontSize: 16, color: AppColors.textPrimary),
+      body: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 26, 16, 20),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: contentWidth),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        TextSpan(text: '비용 청구 멤버 '),
-                        TextSpan(
-                          text: '상태',
-                          style: TextStyle(fontWeight: FontWeight.w800),
+                        _SettlementSummaryCard(
+                          totalAmount: _totalAmount,
+                          memberCount: _memberCount,
+                          requestedAt: _requestedAt,
+                          bankInfo: widget.bankInfo,
+                          meeting: widget.meeting,
+                          requesterName: widget.isHost
+                              ? (currentUser?.name ?? '모임장')
+                              : '모임장',
+                          showSummary: _showSummary,
+                          onToggleSummary: () {
+                            setState(() => _showSummary = !_showSummary);
+                          },
+                          onCopyBankInfo: _copyBankInfo,
                         ),
+                        const SizedBox(height: 25),
+                        _RequesterTitle(
+                          name: widget.isHost
+                              ? (currentUser?.name ?? widget.meeting.hostName)
+                              : widget.meeting.hostName.isEmpty
+                                  ? '모임장'
+                                  : widget.meeting.hostName,
+                        ),
+                        const SizedBox(height: 25),
+                        for (var i = 0; i < _members.length; i++)
+                          _SettlementMemberRow(
+                            member: _members[i],
+                            isHost: widget.isHost,
+                            onPressed: widget.isHost
+                                ? () => _confirmPayment(i)
+                                : () => _requestPaymentCheck(i),
+                          ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    widget.isHost
-                        ? '입금이 확인되면 멤버 상태를 눌러 확인 완료로 바꿀 수 있어요.'
-                        : '내 이름의 상태를 누르면 입금 완료로 표시돼요.',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  ..._members.asMap().entries.map((entry) {
-                    final i = entry.key;
-                    final member = entry.value;
-                    return _MemberRow(
-                      member: member,
-                      isHost: widget.isHost,
-                      isMine: member.userId == SupabaseService.userId,
-                      onTap: () => _handleStatusTap(i),
-                    );
-                  }),
-                  const SizedBox(height: 32),
-                ],
-              ),
-            ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: SizedBox(
-            height: 54,
-            child: ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(30),
                 ),
-                elevation: 0,
-              ),
-              child: const Text(
-                '확인',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
               ),
             ),
-          ),
+            _BottomConfirmButton(
+              enabled: widget.isHost ? _allPaid : true,
+              onPressed: _finishSettlement,
+            ),
+          ],
         ),
       ),
     );
   }
+}
 
-  Widget _buildSummaryCard() {
+class _SettlementSummaryCard extends StatelessWidget {
+  final int totalAmount;
+  final int memberCount;
+  final DateTime requestedAt;
+  final String bankInfo;
+  final MeetingModel meeting;
+  final String requesterName;
+  final bool showSummary;
+  final VoidCallback onToggleSummary;
+  final VoidCallback onCopyBankInfo;
+
+  const _SettlementSummaryCard({
+    required this.totalAmount,
+    required this.memberCount,
+    required this.requestedAt,
+    required this.bankInfo,
+    required this.meeting,
+    required this.requesterName,
+    required this.showSummary,
+    required this.onToggleSummary,
+    required this.onCopyBankInfo,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      constraints: const BoxConstraints(minHeight: 250),
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 15),
       decoration: BoxDecoration(
         color: AppColors.primary,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Text(
-                '정산 금액을 확인하세요',
-                style: TextStyle(fontSize: 13, color: Colors.white70),
+              const Expanded(
+                child: Text(
+                  '정산 금액을 확인하세요',
+                  style: TextStyle(fontSize: 12, color: Colors.white),
+                ),
               ),
-              const Spacer(),
-              GestureDetector(
-                onTap: () => setState(() => _showDetail = !_showDetail),
-                child: Row(
-                  children: [
-                    const Text(
-                      '요약보기',
-                      style: TextStyle(fontSize: 12, color: Colors.white),
-                    ),
-                    Icon(
-                      _showDetail
-                          ? Icons.keyboard_arrow_up
-                          : Icons.keyboard_arrow_down,
-                      size: 16,
-                      color: Colors.white,
-                    ),
-                  ],
+              InkWell(
+                onTap: onToggleSummary,
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Text(
+                    showSummary ? '요약닫기⌃' : '요약보기⌄',
+                    style: const TextStyle(fontSize: 11, color: Colors.white),
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 7),
           Text(
-            '${_formatWon(_totalAmount)}원',
+            '${_formatWon(totalAmount)}원',
             style: const TextStyle(
-              fontSize: 28,
+              fontSize: 32,
               fontWeight: FontWeight.w900,
               color: Colors.white,
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            '1인당 ${_formatWon(_perPersonAmount)}원',
-            style: const TextStyle(fontSize: 13, color: Colors.white70),
+          const SizedBox(height: 2),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  bankInfo,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13, color: Colors.white),
+                ),
+              ),
+              const SizedBox(width: 10),
+              SizedBox(
+                height: 18,
+                child: ElevatedButton(
+                  onPressed: onCopyBankInfo,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFFF0EF),
+                    foregroundColor: AppColors.primary,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(horizontal: 7),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                  ),
+                  child: const Text(
+                    '계좌번호 복사',
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          _buildBankRow(),
-          if (_showDetail) ...[
-            const SizedBox(height: 12),
-            Container(height: 0.5, color: Colors.white38),
-            const SizedBox(height: 12),
-            _DetailRow('요청 일자', _createdAtLabel),
-            _DetailRow('청구 멤버', '${_members.length}명'),
-            _DetailRow('총 비용', '${_formatWon(_totalAmount)}원'),
-            _DetailRow(
-              '모임 장소',
-              widget.meeting.location.isEmpty ? '-' : widget.meeting.location,
+          if (showSummary) ...[
+            const SizedBox(height: 20),
+            Container(height: 1, color: Colors.white.withValues(alpha: 0.8)),
+            const SizedBox(height: 10),
+            _SummaryRow(label: '요청 일자', value: _formatDateTime(requestedAt)),
+            _SummaryRow(label: '청구 멤버', value: requesterName),
+            _SummaryRow(
+              label: '총 비용',
+              value: '총 ${_formatWon(totalAmount)}원 / $memberCount명',
             ),
-            const _DetailRow('청구 방법', '1/N 계좌이체'),
+            _SummaryRow(
+              label: '모임 장소명',
+              value: meeting.location.isEmpty ? '식당 이름 어디점' : meeting.location,
+            ),
+            const SizedBox(height: 4),
+            const Row(
+              children: [
+                Icon(Icons.photo_camera_rounded, size: 15, color: Colors.white),
+                SizedBox(width: 3),
+                Text(
+                  '첨부한 이미지 보기',
+                  style: TextStyle(fontSize: 10, color: Colors.white),
+                ),
+              ],
+            ),
           ],
         ],
       ),
     );
   }
-
-  Widget _buildBankRow() {
-    if (_editingBank) {
-      return Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _bankController,
-              style: const TextStyle(fontSize: 13, color: Colors.white),
-              decoration: const InputDecoration(
-                hintText: '은행명 계좌번호 예금주',
-                hintStyle: TextStyle(color: Colors.white54, fontSize: 12),
-                border: InputBorder.none,
-                isDense: true,
-                contentPadding: EdgeInsets.zero,
-              ),
-              autofocus: true,
-            ),
-          ),
-          _SmallWhiteButton(
-            label: '저장',
-            onTap: () => setState(() {
-              _bankInfo = _bankController.text.trim();
-              _editingBank = false;
-            }),
-          ),
-        ],
-      );
-    }
-
-    return Row(
-      children: [
-        Expanded(
-          child: GestureDetector(
-            onTap: () => setState(() {
-              _editingBank = true;
-              _bankController.text = _bankInfo;
-            }),
-            child: Text(
-              _bankInfo.isEmpty ? '+ 계좌번호 입력' : _bankInfo,
-              style: TextStyle(
-                fontSize: 13,
-                color: _bankInfo.isEmpty ? Colors.white54 : Colors.white70,
-                decoration: _bankInfo.isEmpty ? TextDecoration.underline : null,
-              ),
-            ),
-          ),
-        ),
-        if (_bankInfo.isNotEmpty)
-          _SmallWhiteButton(
-            label: '복사',
-            onTap: () {
-              Clipboard.setData(ClipboardData(text: _bankInfo));
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('계좌번호가 복사되었어요'),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-            },
-          ),
-      ],
-    );
-  }
-
-  static String _formatWon(int amount) {
-    final text = amount.toString();
-    final buffer = StringBuffer();
-    for (var i = 0; i < text.length; i++) {
-      if (i > 0 && (text.length - i) % 3 == 0) buffer.write(',');
-      buffer.write(text[i]);
-    }
-    return buffer.toString();
-  }
 }
 
-class _MemberRow extends StatelessWidget {
-  final _Member member;
-  final bool isHost;
-  final bool isMine;
-  final VoidCallback onTap;
+class _SummaryRow extends StatelessWidget {
+  final String label;
+  final String value;
 
-  const _MemberRow({
-    required this.member,
-    required this.isHost,
-    required this.isMine,
-    required this.onTap,
-  });
+  const _SummaryRow({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.only(bottom: 5),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration:
-                BoxDecoration(color: member.color, shape: BoxShape.circle),
-            child: const Center(
-              child: Icon(
-                Icons.person_rounded,
-                color: Colors.white,
-                size: 22,
-              ),
+          SizedBox(
+            width: 78,
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 10, color: Colors.white),
             ),
           ),
-          const SizedBox(width: 14),
           Expanded(
             child: Text(
-              isMine ? '${member.name} (나)' : member.name,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              value,
+              textAlign: TextAlign.right,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          Text(
-            '${_SettlementScreenState._formatWon(member.amount)}원',
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(width: 10),
-          GestureDetector(
-            onTap: member.status == _PayStatus.confirmed ? null : onTap,
-            child: _StatusBadge(
-              status: member.status,
-              isHost: isHost,
-              isMine: isMine,
+              style: const TextStyle(fontSize: 10, color: Colors.white),
             ),
           ),
         ],
@@ -468,53 +362,184 @@ class _MemberRow extends StatelessWidget {
   }
 }
 
-class _DetailRow extends StatelessWidget {
-  final String label;
-  final String value;
+class _RequesterTitle extends StatelessWidget {
+  final String name;
 
-  const _DetailRow(this.label, this.value);
-
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Row(
-          children: [
-            Text(
-              label,
-              style: const TextStyle(fontSize: 12, color: Colors.white70),
-            ),
-            const Spacer(),
-            Text(
-              value,
-              style: const TextStyle(fontSize: 12, color: Colors.white),
-            ),
-          ],
-        ),
-      );
-}
-
-class _SmallWhiteButton extends StatelessWidget {
-  final String label;
-  final VoidCallback onTap;
-
-  const _SmallWhiteButton({required this.label, required this.onTap});
+  const _RequesterTitle({required this.name});
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.25),
-          borderRadius: BorderRadius.circular(8),
+    return RichText(
+      text: TextSpan(
+        style: const TextStyle(fontSize: 18, color: Colors.black),
+        children: [
+          const TextSpan(text: '비용 청구자  '),
+          TextSpan(
+            text: name.isEmpty ? '모임장' : name,
+            style: const TextStyle(fontWeight: FontWeight.w900),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettlementMemberRow extends StatelessWidget {
+  final _SettlementMember member;
+  final bool isHost;
+  final VoidCallback onPressed;
+
+  const _SettlementMemberRow({
+    required this.member,
+    required this.isHost,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDone = member.status == _PayStatus.done;
+    final isRequested = member.status == _PayStatus.requested;
+    final buttonLabel = isHost
+        ? isDone
+            ? '입금 완료'
+            : '입금 확인'
+        : isDone
+            ? '입금 완료'
+            : isRequested
+                ? '요청 완료'
+                : '입금 확인 요청';
+    final buttonWidth = isHost ? 61.0 : 70.0;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 11),
+      child: Row(
+        children: [
+          _MemberAvatar(name: member.name),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              member.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+            ),
+          ),
+          const SizedBox(width: 8),
+          _UnderlinedAmount(amount: member.amount),
+          const SizedBox(width: 17),
+          SizedBox(
+            width: buttonWidth,
+            height: 18,
+            child: ElevatedButton(
+              onPressed: isDone || isRequested && !isHost ? null : onPressed,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: isDone || isRequested && !isHost
+                    ? const Color(0xFFD9D9D9)
+                    : AppColors.primary,
+                disabledBackgroundColor: const Color(0xFFD9D9D9),
+                foregroundColor: Colors.white,
+                disabledForegroundColor: Colors.white,
+                elevation: 0,
+                padding: EdgeInsets.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: Text(
+                buttonLabel,
+                maxLines: 1,
+                style:
+                    const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MemberAvatar extends StatelessWidget {
+  final String name;
+
+  const _MemberAvatar({required this.name});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF0EF),
+        shape: BoxShape.circle,
+        border: Border.all(color: const Color(0xFFD9D9D9), width: 0.9),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        name.isEmpty ? '밥' : name.substring(0, 1),
+        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+      ),
+    );
+  }
+}
+
+class _UnderlinedAmount extends StatelessWidget {
+  final int amount;
+
+  const _UnderlinedAmount({required this.amount});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '${_formatWon(amount)} 원',
+          style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800),
         ),
-        child: Text(
-          label,
-          style: const TextStyle(
-            fontSize: 11,
-            color: Colors.white,
-            fontWeight: FontWeight.w600,
+        const SizedBox(height: 2),
+        Container(width: 37, height: 1, color: Colors.black),
+      ],
+    );
+  }
+}
+
+class _BottomConfirmButton extends StatelessWidget {
+  final bool enabled;
+  final VoidCallback onPressed;
+
+  const _BottomConfirmButton({
+    required this.enabled,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(25, 10, 25, 12),
+        child: SizedBox(
+          width: double.infinity,
+          height: 55,
+          child: ElevatedButton(
+            onPressed: enabled ? onPressed : null,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              disabledBackgroundColor: const Color(0xFFD9D9D9),
+              foregroundColor: Colors.white,
+              disabledForegroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: const Text(
+              '확인',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+            ),
           ),
         ),
       ),
@@ -522,113 +547,40 @@ class _SmallWhiteButton extends StatelessWidget {
   }
 }
 
-enum _PayStatus {
-  requested('requested'),
-  paid('paid'),
-  confirmed('confirmed');
+enum _PayStatus { pending, requested, done }
 
-  final String dbValue;
-
-  const _PayStatus(this.dbValue);
-
-  static _PayStatus fromDb(String? value) {
-    return switch (value) {
-      'paid' => _PayStatus.paid,
-      'confirmed' => _PayStatus.confirmed,
-      _ => _PayStatus.requested,
-    };
-  }
-}
-
-class _Member {
-  final String userId;
+class _SettlementMember {
   final String name;
   final int amount;
   final _PayStatus status;
-  final Color color;
 
-  const _Member({
-    required this.userId,
+  const _SettlementMember({
     required this.name,
     required this.amount,
     required this.status,
-    required this.color,
   });
 
-  _Member copyWith({_PayStatus? status}) {
-    return _Member(
-      userId: userId,
+  _SettlementMember copyWith({_PayStatus? status}) {
+    return _SettlementMember(
       name: name,
       amount: amount,
       status: status ?? this.status,
-      color: color,
     );
   }
 }
 
-class _StatusBadge extends StatelessWidget {
-  final _PayStatus status;
-  final bool isHost;
-  final bool isMine;
-
-  const _StatusBadge({
-    required this.status,
-    required this.isHost,
-    required this.isMine,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final config = switch (status) {
-      _PayStatus.confirmed => const _BadgeConfig(
-          label: '확인 완료',
-          color: AppColors.textSecondary,
-          background: AppColors.bgGray,
-          border: AppColors.bgGray,
-        ),
-      _PayStatus.paid => _BadgeConfig(
-          label: isHost ? '확인하기' : '입금 완료',
-          color: AppColors.primary,
-          background: AppColors.primaryBg,
-          border: AppColors.primary,
-        ),
-      _PayStatus.requested => _BadgeConfig(
-          label: isMine && !isHost ? '입금했어요' : '요청됨',
-          color: AppColors.primary,
-          background: AppColors.primaryBg,
-          border: AppColors.primary,
-        ),
-    };
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: config.background,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: config.border),
-      ),
-      child: Text(
-        config.label,
-        style: TextStyle(
-          fontSize: 11,
-          color: config.color,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
+String _formatWon(int amount) {
+  final text = amount.toString();
+  final buffer = StringBuffer();
+  for (var i = 0; i < text.length; i++) {
+    if (i > 0 && (text.length - i) % 3 == 0) buffer.write(',');
+    buffer.write(text[i]);
   }
+  return buffer.toString();
 }
 
-class _BadgeConfig {
-  final String label;
-  final Color color;
-  final Color background;
-  final Color border;
-
-  const _BadgeConfig({
-    required this.label,
-    required this.color,
-    required this.background,
-    required this.border,
-  });
+String _formatDateTime(DateTime time) {
+  String two(int value) => value.toString().padLeft(2, '0');
+  return '${time.year}-${two(time.month)}-${two(time.day)}  '
+      '${two(time.hour)}:${two(time.minute)}';
 }

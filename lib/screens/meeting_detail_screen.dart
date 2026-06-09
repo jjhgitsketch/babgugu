@@ -1,14 +1,15 @@
 // lib/screens/meeting_detail_screen.dart
 import 'package:flutter/material.dart';
+
 import '../models/models.dart';
-import '../services/supabase_service.dart';
 import '../services/notification_service.dart';
+import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'chat_screen.dart';
 
 class MeetingDetailScreen extends StatefulWidget {
   final MeetingModel meeting;
+
   const MeetingDetailScreen({super.key, required this.meeting});
 
   @override
@@ -46,24 +47,88 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
     ]);
     final memberRows = results[0] as List<Map<String, dynamic>>;
     final blockedIds = results[1] as Set<String>;
-    final members = memberRows.map((m) {
-      final user = m['users'] as Map<String, dynamic>?;
-      final uid = m['user_id'] as String? ?? '';
+    final members = memberRows.map((row) {
+      final user = row['users'] as Map<String, dynamic>?;
+      final userId = row['user_id'] as String? ?? '';
       final nickname = user?['nickname'] as String?;
       final name = nickname?.isNotEmpty == true
           ? nickname!
           : (user?['name'] as String?) ?? '멤버';
       return _MeetingMember(
-        userId: uid,
+        userId: userId,
         name: name,
-        avatarUrl: user?['avatar_url'] as String?,
       );
     }).toList();
+
     if (!mounted) return;
     setState(() {
       _members = members;
       _blockedUserIds = blockedIds;
     });
+  }
+
+  Future<void> _toggleJoin() async {
+    if (_isJoined) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => ChatScreen(meeting: widget.meeting)),
+      );
+      return;
+    }
+
+    setState(() => _loading = true);
+    try {
+      await SupabaseService.joinMeeting(widget.meeting.id);
+      final myIds = await SupabaseService.getMyMeetingIds();
+      await NotificationService.instance.startListening(myIds.toList());
+      if (!mounted) return;
+      setState(() {
+        _isJoined = true;
+        widget.meeting.isJoined = true;
+      });
+      await _loadMembers();
+      if (!mounted) return;
+      await showDialog(
+        context: context,
+        builder: (_) => const _JoinSuccessDialog(),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('오류: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _cancelJoin() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+    try {
+      await SupabaseService.leaveMeeting(widget.meeting.id);
+      final myIds = await SupabaseService.getMyMeetingIds();
+      await NotificationService.instance.startListening(myIds.toList());
+      if (!mounted) return;
+      setState(() {
+        _isJoined = false;
+        widget.meeting.isJoined = false;
+      });
+      await _loadMembers();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('모임 참여를 취소했어요.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('참여 취소에 실패했어요: $e'), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   Future<void> _confirmBlockUser(_MeetingMember member) async {
@@ -72,9 +137,11 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
       context: context,
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('다시 안 만나기',
-            style: TextStyle(fontWeight: FontWeight.w800)),
-        content: Text('${member.name}님이 포함된 모임은 추천과 탐색에서 제외할게요.'),
+        title: const Text(
+          '다시 안 만나기',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
+        content: Text('${member.name}님이 포함된 모임을 추천/탐색에서 제외할까요?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -95,451 +162,129 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
     await SupabaseService.blockUserFromRematch(member.userId);
     if (!mounted) return;
     setState(() => _blockedUserIds = {..._blockedUserIds, member.userId});
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('${member.name}님을 재매칭 제외 목록에 추가했어요.'),
-      behavior: SnackBarBehavior.floating,
-    ));
-  }
-
-  Future<void> _toggleJoin() async {
-    setState(() => _loading = true);
-    try {
-      if (_isJoined) {
-        await SupabaseService.leaveMeeting(widget.meeting.id);
-      } else {
-        await SupabaseService.joinMeeting(widget.meeting.id);
-      }
-      final nowJoined = !_isJoined;
-      setState(() {
-        _isJoined = nowJoined;
-        widget.meeting.isJoined = nowJoined;
-      });
-      final myIds = await SupabaseService.getMyMeetingIds();
-      await NotificationService.instance.startListening(myIds.toList());
-      if (mounted && nowJoined) {
-        // 참여 완료 팝업
-        await showDialog(
-          context: context,
-          builder: (_) => const _JoinSuccessDialog(),
-        );
-      } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Text('모임 참여를 취소했어요'),
-          backgroundColor: AppColors.textSecondary,
-          behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('오류: $e'),
-          backgroundColor: Colors.red,
-        ));
-      }
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${member.name}님을 다시 안 만나기 목록에 추가했어요.'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final m = widget.meeting;
-    final isDelivery = m.type == MeetingType.delivery;
-    final isFull = m.currentMembers >= m.maxMembers;
+    final meeting = widget.meeting;
+    final isDelivery = meeting.type == MeetingType.delivery;
+    final isFull = meeting.currentMembers >= meeting.maxMembers;
+    final details = _MeetingDetails.from(meeting);
 
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: Colors.white,
       body: CustomScrollView(
         slivers: [
-          // ─── 상단 헤더 (코랄 배경 or 이미지) ───
-          SliverAppBar(
-            expandedHeight: isDelivery ? 120 : 200,
-            pinned: true,
-            backgroundColor: AppColors.primary,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                  color: Colors.white, size: 20),
-              onPressed: () => Navigator.pop(context),
-            ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.bookmark_border_rounded,
-                    color: Colors.white, size: 24),
-                onPressed: () {},
-              ),
-            ],
-            flexibleSpace: FlexibleSpaceBar(
-              background: Container(
-                color: AppColors.primary,
-                child: isDelivery
-                    ? const Center(
-                        child: Text('🛵', style: TextStyle(fontSize: 56)))
-                    : const Center(
-                        child: Text('🍽️', style: TextStyle(fontSize: 56))),
-              ),
-            ),
-            // appbar title (collapsed)
-            title: Text(
-              isDelivery ? '' : '',
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700),
+          SliverToBoxAdapter(
+            child: _HeroSummary(
+              meeting: meeting,
+              isDelivery: isDelivery,
+              isJoined: _isJoined,
+              isFull: isFull,
+              loading: _loading,
+              onBack: () => Navigator.pop(context),
+              onAction: _toggleJoin,
+              onCancelJoin: _cancelJoin,
             ),
           ),
-
           SliverToBoxAdapter(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ─── 타이틀 카드 ───
-                Container(
-                  margin: const EdgeInsets.all(16),
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                          color: Colors.black.withOpacity(0.06),
-                          blurRadius: 12,
-                          offset: const Offset(0, 2))
-                    ],
-                  ),
+            child: _HostSummary(meeting: meeting),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 39, 20, 40),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 355),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        m.title,
-                        style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.textPrimary),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          const Icon(Icons.calendar_today_outlined,
-                              size: 16, color: AppColors.textSecondary),
-                          const SizedBox(width: 6),
-                          Text(
-                            '${m.meetingTime.month}/${m.meetingTime.day}',
+                      _InfoSection(
+                        title: '모임 소개',
+                        child: _OutlinedBox(
+                          minHeight: isDelivery ? 102 : 96,
+                          child: Text(
+                            details.cleanDescription.isEmpty
+                                ? '아직 모임 소개가 없어요.'
+                                : details.cleanDescription,
                             style: const TextStyle(
-                                fontSize: 13,
-                                color: AppColors.textSecondary,
-                                fontWeight: FontWeight.w600),
+                              fontSize: 14,
+                              height: 1.22,
+                              color: Colors.black,
+                            ),
                           ),
-                          const SizedBox(width: 16),
-                          const Icon(Icons.people_outline_rounded,
-                              size: 16, color: AppColors.textSecondary),
-                          const SizedBox(width: 6),
-                          Text(
-                            '${m.currentMembers}/${m.maxMembers}명',
-                            style: const TextStyle(
-                                fontSize: 13,
-                                color: AppColors.textSecondary,
-                                fontWeight: FontWeight.w600),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: m.tags
-                            .map((t) => Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 10, vertical: 5),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primaryBg,
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Text('#$t',
-                                      style: const TextStyle(
-                                          fontSize: 12,
-                                          color: AppColors.primary,
-                                          fontWeight: FontWeight.w600)),
-                                ))
-                            .toList(),
-                      ),
-                      const SizedBox(height: 16),
-                      // 참여 버튼
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton(
-                          onPressed: (isFull && !_isJoined) || _loading
-                              ? null
-                              : _toggleJoin,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor:
-                                _isJoined ? Colors.white : AppColors.primary,
-                            foregroundColor:
-                                _isJoined ? AppColors.primary : Colors.white,
-                            side: _isJoined
-                                ? const BorderSide(color: AppColors.primary)
-                                : null,
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(30)),
-                            elevation: 0,
-                          ),
-                          child: _loading
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child:
-                                      CircularProgressIndicator(strokeWidth: 2))
-                              : Text(
-                                  _isJoined
-                                      ? '참여 취소'
-                                      : isFull
-                                          ? '모집 완료'
-                                          : '모임 참여하기',
-                                  style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w700),
-                                ),
                         ),
+                      ),
+                      if (isDelivery) ...[
+                        const SizedBox(height: 33),
+                        Row(
+                          children: [
+                            const Text(
+                              '배달앱',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(width: 13),
+                            Expanded(
+                              child: _OutlinedBox(
+                                minHeight: 40,
+                                center: true,
+                                child: Text(
+                                  details.deliveryApp.isEmpty
+                                      ? '배달앱 미정'
+                                      : details.deliveryApp,
+                                  style: const TextStyle(fontSize: 14),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 29),
+                        _InfoSection(
+                          title: '배달 수령지 / 소분 장소',
+                          child: _OutlinedBox(
+                            minHeight: 49,
+                            child: Text(
+                              meeting.location.isEmpty
+                                  ? '장소 정보가 없어요.'
+                                  : meeting.location,
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                          ),
+                        ),
+                      ] else ...[
+                        const SizedBox(height: 33),
+                        _InfoSection(
+                          title: '식당 위치',
+                          child: _OutlinedBox(
+                            minHeight: 49,
+                            child: Text(
+                              meeting.location.isEmpty
+                                  ? '장소 정보가 없어요.'
+                                  : meeting.location,
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 33),
+                      _MemberSection(
+                        members: _members,
+                        blockedUserIds: _blockedUserIds,
+                        onBlock: _confirmBlockUser,
                       ),
                     ],
                   ),
                 ),
-
-                // ─── 모임 소개 ───
-                _Section(
-                  title: '모임 소개',
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AppColors.bgGray,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      children: [
-                        Text(
-                          m.description.isEmpty ? '모임 소개글' : m.description,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: m.description.isEmpty
-                                ? AppColors.textLight
-                                : AppColors.textPrimary,
-                            height: 1.6,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        if (m.description.isEmpty)
-                          const Text('-모임 목적',
-                              style: TextStyle(
-                                  fontSize: 12, color: AppColors.textLight)),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // ─── 배달앱 (배달 모임만) ───
-                if (isDelivery)
-                  _Section(
-                    title: '배달앱',
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: AppColors.bgGray,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        '배민 or 요기요\nor 쿠팡이츠...',
-                        style: const TextStyle(
-                            fontSize: 13,
-                            color: AppColors.textSecondary,
-                            height: 1.5),
-                      ),
-                    ),
-                  ),
-
-                // ─── 위치 ───
-                _Section(
-                  title: isDelivery ? '배달 수령지 / 소분 장소' : '위치',
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.divider),
-                    ),
-                    child: isDelivery
-                        ? Text(
-                            m.location.isEmpty
-                                ? '중앙대학교 다빈치 캠퍼스 후문 앞'
-                                : m.location,
-                            style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.textPrimary),
-                          )
-                        : Row(
-                            children: [
-                              Container(
-                                width: 60,
-                                height: 60,
-                                decoration: BoxDecoration(
-                                  color: AppColors.bgGray,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: const Center(
-                                    child: Text('📍',
-                                        style: TextStyle(fontSize: 24))),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      m.location.isEmpty
-                                          ? '식당 이름 / 어디 지점'
-                                          : m.location,
-                                      style: const TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w700,
-                                          color: AppColors.textPrimary),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    const Text('영업중',
-                                        style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.green,
-                                            fontWeight: FontWeight.w600)),
-                                    if (m.address != null)
-                                      Text(m.address!,
-                                          style: const TextStyle(
-                                              fontSize: 12,
-                                              color: AppColors.textSecondary)),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                  ),
-                ),
-
-                // ─── 지도 미리보기 (식당 + 위치 있을 때) ───
-                if (!isDelivery && m.hasLocation)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: SizedBox(
-                        height: 160,
-                        child: _NaverMapPreview(
-                            latitude: m.latitude!,
-                            longitude: m.longitude!,
-                            label: m.location),
-                      ),
-                    ),
-                  ),
-
-                // ─── 모임 멤버 ───
-                _Section(
-                  title: '모임 멤버',
-                  child: Row(
-                    children: List.generate(
-                      m.currentMembers.clamp(0, 5),
-                      (i) {
-                        final colors = [
-                          AppColors.primary,
-                          const Color(0xFFFFB347),
-                          const Color(0xFF888888),
-                          AppColors.primaryLight,
-                          const Color(0xFFA0C4FF)
-                        ];
-                        return Container(
-                          width: 48,
-                          height: 48,
-                          margin: const EdgeInsets.only(right: 8),
-                          decoration: BoxDecoration(
-                            color: colors[i % colors.length],
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Center(
-                              child: Icon(Icons.person_rounded,
-                                  color: Colors.white, size: 24)),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-
-                // ─── 채팅방 (참여자만) ───
-                if (_members.isNotEmpty)
-                  _Section(
-                    title: '재매칭 제외',
-                    child: Wrap(
-                      spacing: 10,
-                      runSpacing: 12,
-                      children: _members.map((member) {
-                        final isMe = member.userId == currentUser?.id;
-                        final isBlocked =
-                            _blockedUserIds.contains(member.userId);
-                        return _MemberChip(
-                          member: member,
-                          isMe: isMe,
-                          isBlocked: isBlocked,
-                          onBlock: isMe || isBlocked
-                              ? null
-                              : () => _confirmBlockUser(member),
-                        );
-                      }).toList(),
-                    ),
-                  ),
-
-                if (_isJoined)
-                  _Section(
-                    title: '채팅방',
-                    child: GestureDetector(
-                      onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => ChatScreen(meeting: m))),
-                      child: Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppColors.divider),
-                        ),
-                        child: const Row(
-                          children: [
-                            Icon(Icons.chat_bubble_outline_rounded,
-                                color: AppColors.primary, size: 22),
-                            SizedBox(width: 12),
-                            Expanded(
-                                child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                  Text('실시간 채팅방',
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 14)),
-                                  Text('입장하기',
-                                      style: TextStyle(
-                                          fontSize: 12,
-                                          color: AppColors.textSecondary)),
-                                ])),
-                            Icon(Icons.chevron_right,
-                                color: AppColors.textLight),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-
-                const SizedBox(height: 40),
-              ],
+              ),
             ),
           ),
         ],
@@ -548,280 +293,594 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
   }
 }
 
-class _Section extends StatelessWidget {
-  final String title;
-  final Widget child;
-  const _Section({required this.title, required this.child});
+class _HeroSummary extends StatelessWidget {
+  final MeetingModel meeting;
+  final bool isDelivery;
+  final bool isJoined;
+  final bool isFull;
+  final bool loading;
+  final VoidCallback onBack;
+  final VoidCallback onAction;
+  final VoidCallback onCancelJoin;
+
+  const _HeroSummary({
+    required this.meeting,
+    required this.isDelivery,
+    required this.isJoined,
+    required this.isFull,
+    required this.loading,
+    required this.onBack,
+    required this.onAction,
+    required this.onCancelJoin,
+  });
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary)),
-            const SizedBox(height: 10),
-            child,
-          ],
-        ),
-      );
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 444,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            height: 372,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: isDelivery ? const Color(0xFFFFF0EF) : AppColors.primary,
+            ),
+            child: Center(
+              child: Text(
+                isDelivery ? '배달' : '식당',
+                style: const TextStyle(fontSize: 116),
+              ),
+            ),
+          ),
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  IconButton(
+                    onPressed: onBack,
+                    icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                    color: Colors.black,
+                  ),
+                  IconButton(
+                    onPressed: () {},
+                    icon: const Icon(Icons.favorite_border_rounded),
+                    color: Colors.black,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Positioned(
+            left: 22,
+            right: 22,
+            top: 214,
+            child: Container(
+              height: 224,
+              padding: const EdgeInsets.fromLTRB(28, 22, 28, 18),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(25),
+                border: Border.all(color: const Color(0xFFD9D9D9)),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    meeting.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 21,
+                      height: 1.12,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.black,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.calendar_month_rounded,
+                          size: 20, color: Color(0xFF4B55FF)),
+                      const SizedBox(width: 5),
+                      Text(
+                        _formatDate(meeting.meetingTime),
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                      const SizedBox(width: 26),
+                      const _FigmaPeopleIcon(),
+                      const SizedBox(width: 5),
+                      Text(
+                        '${meeting.currentMembers}/${meeting.maxMembers}명',
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  _TagPreview(tags: meeting.tags),
+                  const Spacer(),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 46,
+                    child: ElevatedButton(
+                      onPressed:
+                          (isFull && !isJoined) || loading ? null : onAction,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        disabledBackgroundColor: const Color(0xFFD9D9D9),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: EdgeInsets.zero,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: loading
+                          ? const SizedBox(
+                              width: 18,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : Text(
+                              isJoined
+                                  ? '채팅방 가기'
+                                  : isFull
+                                      ? '모집 완료'
+                                      : '모임 참여하기',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                    ),
+                  ),
+                  if (isJoined) ...[
+                    const SizedBox(height: 2),
+                    SizedBox(
+                      height: 25,
+                      child: TextButton(
+                        onPressed: loading ? null : onCancelJoin,
+                        style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xFF909090),
+                          padding: EdgeInsets.zero,
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text(
+                          '참여 취소',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-class _MeetingMember {
-  final String userId;
-  final String name;
-  final String? avatarUrl;
+class _TagPreview extends StatelessWidget {
+  final List<String> tags;
 
-  const _MeetingMember({
-    required this.userId,
-    required this.name,
-    this.avatarUrl,
+  const _TagPreview({required this.tags});
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = tags.take(2).toList();
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 9,
+      runSpacing: 6,
+      children: [
+        for (final rawTag in visible)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF0EF),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: Text(
+              rawTag.startsWith('#') ? rawTag : '#$rawTag',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: AppColors.primary,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _FigmaPeopleIcon extends StatelessWidget {
+  const _FigmaPeopleIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    const color = Color(0xFF4B55FF);
+    return SizedBox(
+      width: 25,
+      height: 25,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Positioned(
+            left: 3,
+            top: 4,
+            child: Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+          Positioned(
+            right: 3,
+            top: 4,
+            child: Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+          Positioned(
+            left: 0,
+            bottom: 4,
+            child: Container(
+              width: 12,
+              height: 8,
+              decoration: const BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(8),
+                  topRight: Radius.circular(8),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            right: 0,
+            bottom: 4,
+            child: Container(
+              width: 12,
+              height: 8,
+              decoration: const BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(8),
+                  topRight: Radius.circular(8),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HostSummary extends StatelessWidget {
+  final MeetingModel meeting;
+
+  const _HostSummary({required this.meeting});
+
+  @override
+  Widget build(BuildContext context) {
+    final hostName = meeting.hostName.isEmpty ? '모임장' : meeting.hostName;
+    return Container(
+      height: 78,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Color(0xFFEDEDED))),
+      ),
+      child: Row(
+        children: [
+          const _AvatarCircle(size: 49, label: '밥'),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  hostName,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                const Text(
+                  '남 / 22세',
+                  style: TextStyle(fontSize: 12, color: Colors.black),
+                ),
+              ],
+            ),
+          ),
+          const Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    '4.8',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  SizedBox(width: 4),
+                  Icon(Icons.rice_bowl_rounded,
+                      size: 24, color: AppColors.primary),
+                ],
+              ),
+              Text(
+                '신뢰점수',
+                style: TextStyle(fontSize: 10, color: Color(0xFFD0CFCE)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoSection extends StatelessWidget {
+  final String title;
+  final Widget child;
+
+  const _InfoSection({required this.title, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 13),
+        child,
+      ],
+    );
+  }
+}
+
+class _OutlinedBox extends StatelessWidget {
+  final double minHeight;
+  final Widget child;
+  final bool center;
+
+  const _OutlinedBox({
+    required this.minHeight,
+    required this.child,
+    this.center = false,
   });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      constraints: BoxConstraints(minHeight: minHeight),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      alignment: center ? Alignment.center : Alignment.centerLeft,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(5),
+        border: Border.all(color: const Color(0xFFD9D9D9)),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _MemberSection extends StatelessWidget {
+  final List<_MeetingMember> members;
+  final Set<String> blockedUserIds;
+  final ValueChanged<_MeetingMember> onBlock;
+
+  const _MemberSection({
+    required this.members,
+    required this.blockedUserIds,
+    required this.onBlock,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '모임 멤버',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 13),
+        if (members.isEmpty)
+          const Text(
+            '아직 표시할 멤버가 없어요.',
+            style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+          )
+        else
+          Wrap(
+            spacing: 14,
+            runSpacing: 14,
+            children: [
+              for (final member in members)
+                _MemberChip(
+                  member: member,
+                  blocked: blockedUserIds.contains(member.userId),
+                  onBlock: () => onBlock(member),
+                ),
+            ],
+          ),
+      ],
+    );
+  }
 }
 
 class _MemberChip extends StatelessWidget {
   final _MeetingMember member;
-  final bool isMe;
-  final bool isBlocked;
-  final VoidCallback? onBlock;
+  final bool blocked;
+  final VoidCallback onBlock;
 
   const _MemberChip({
     required this.member,
-    required this.isMe,
-    required this.isBlocked,
-    this.onBlock,
+    required this.blocked,
+    required this.onBlock,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 92,
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: isBlocked ? AppColors.bgGray : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isBlocked ? AppColors.textLight : AppColors.divider,
+    return PopupMenuButton<String>(
+      onSelected: (_) => onBlock(),
+      itemBuilder: (_) => [
+        PopupMenuItem(
+          value: 'block',
+          enabled: member.userId != currentUser?.id && !blocked,
+          child: Text(blocked ? '제외됨' : '다시 안 만나기'),
         ),
-      ),
+      ],
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          CircleAvatar(
-            radius: 22,
-            backgroundColor: AppColors.primaryLight,
-            backgroundImage: member.avatarUrl == null
-                ? null
-                : NetworkImage(member.avatarUrl!),
-            child: member.avatarUrl == null
-                ? const Icon(Icons.person_rounded,
-                    color: Colors.white, size: 24)
-                : null,
-          ),
+          _AvatarCircle(size: 64, label: member.name.substring(0, 1)),
           const SizedBox(height: 6),
-          Text(
-            isMe ? '나' : member.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 6),
-          if (isBlocked)
-            const Text(
-              '제외됨',
+          SizedBox(
+            width: 72,
+            child: Text(
+              member.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textSecondary,
+                color: blocked ? AppColors.textLight : Colors.black,
               ),
-            )
-          else if (!isMe)
-            GestureDetector(
-              onTap: onBlock,
-              child: const Text(
-                '다시 안 만나기',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.red,
-                ),
-              ),
-            )
-          else
-            const SizedBox(height: 13),
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-// 네이버 지도 미리보기
-class _NaverMapPreview extends StatelessWidget {
-  final double latitude, longitude;
+class _AvatarCircle extends StatelessWidget {
+  final double size;
   final String label;
-  const _NaverMapPreview(
-      {required this.latitude, required this.longitude, required this.label});
+
+  const _AvatarCircle({required this.size, required this.label});
 
   @override
   Widget build(BuildContext context) {
-    if (kIsWeb) {
-      return Container(
-        decoration: BoxDecoration(
-          color: AppColors.tagBg,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.map_outlined,
-                  color: AppColors.primary, size: 32),
-              const SizedBox(height: 8),
-              Text(label,
-                  style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.primary)),
-              const SizedBox(height: 4),
-              Text(
-                '${latitude.toStringAsFixed(4)}, ${longitude.toStringAsFixed(4)}',
-                style: const TextStyle(
-                    fontSize: 11, color: AppColors.textSecondary),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-    return _NaverMapWidget(
-        latitude: latitude, longitude: longitude, label: label);
-  }
-}
-
-// 모바일 전용 네이버 지도
-class _NaverMapWidget extends StatefulWidget {
-  final double latitude, longitude;
-  final String label;
-  const _NaverMapWidget(
-      {required this.latitude, required this.longitude, required this.label});
-
-  @override
-  State<_NaverMapWidget> createState() => _NaverMapWidgetState();
-}
-
-class _NaverMapWidgetState extends State<_NaverMapWidget> {
-  @override
-  Widget build(BuildContext context) {
-    // 모바일에서만 네이버 지도 사용
     return Container(
+      width: size,
+      height: size,
       decoration: BoxDecoration(
-        color: AppColors.tagBg,
-        borderRadius: BorderRadius.circular(12),
+        color: const Color(0xFFFFF0EF),
+        shape: BoxShape.circle,
+        border: Border.all(color: const Color(0xFFD9D9D9)),
       ),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.place, color: AppColors.primary, size: 32),
-            const SizedBox(height: 8),
-            Text(widget.label,
-                style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.primary)),
-          ],
-        ),
+      alignment: Alignment.center,
+      child: Text(
+        label,
+        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
       ),
     );
   }
 }
 
-// ─── 참여 완료 팝업 (Image 2) ───
 class _JoinSuccessDialog extends StatelessWidget {
   const _JoinSuccessDialog();
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 90,
-              height: 90,
-              decoration: BoxDecoration(
-                color: AppColors.bgGray,
-                shape: BoxShape.circle,
-              ),
-              child: const Center(
-                  child: Text('🎉', style: TextStyle(fontSize: 40))),
-            ),
-            const SizedBox(height: 20),
-            const Text('모임 참여 완료!',
-                style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary)),
-            const SizedBox(height: 8),
-            const Text('채팅방으로\n이동할까요?',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 14, color: AppColors.textSecondary, height: 1.5)),
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryBg,
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      child: const Center(
-                        child: Text('아니요',
-                            style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.primary)),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(30)),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      elevation: 0,
-                    ),
-                    child: const Text('이동하기',
-                        style: TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w700)),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      title: const Text(
+        '모임 참여 완료',
+        style: TextStyle(fontWeight: FontWeight.w800),
       ),
+      content: const Text('이제 채팅방에서 모임 멤버들과 이야기할 수 있어요.'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('확인'),
+        ),
+      ],
     );
   }
+}
+
+class _MeetingDetails {
+  final String cleanDescription;
+  final String deliveryApp;
+
+  const _MeetingDetails({
+    required this.cleanDescription,
+    required this.deliveryApp,
+  });
+
+  factory _MeetingDetails.from(MeetingModel meeting) {
+    final lines = meeting.description
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList();
+    var deliveryApp = '';
+    final descriptionLines = <String>[];
+
+    for (final line in lines) {
+      if (line.startsWith('배달앱:')) {
+        deliveryApp = line.replaceFirst('배달앱:', '').trim();
+      } else if (!line.contains('원격주문 가능')) {
+        descriptionLines.add(line);
+      }
+    }
+
+    return _MeetingDetails(
+      cleanDescription: descriptionLines.join('\n'),
+      deliveryApp: deliveryApp,
+    );
+  }
+}
+
+class _MeetingMember {
+  final String userId;
+  final String name;
+
+  const _MeetingMember({
+    required this.userId,
+    required this.name,
+  });
+}
+
+String _formatDate(DateTime date) {
+  return '${date.month.toString().padLeft(2, '0')}/'
+      '${date.day.toString().padLeft(2, '0')}';
 }

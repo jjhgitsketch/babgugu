@@ -10,6 +10,10 @@ class UserModel {
   final String? university;
   final String? department;
   final String? studentId;
+  final String? gender;
+  final String? schoolEmail;
+  final bool studentVerified;
+  final DateTime? studentVerifiedAt;
 
   const UserModel({
     required this.id,
@@ -21,6 +25,10 @@ class UserModel {
     this.university,
     this.department,
     this.studentId,
+    this.gender,
+    this.schoolEmail,
+    this.studentVerified = false,
+    this.studentVerifiedAt,
   });
 
   String get displayName => nickname?.isNotEmpty == true ? nickname! : name;
@@ -34,6 +42,10 @@ class UserModel {
     String? university,
     String? department,
     String? studentId,
+    String? gender,
+    String? schoolEmail,
+    bool? studentVerified,
+    DateTime? studentVerifiedAt,
   }) =>
       UserModel(
         id: id,
@@ -45,6 +57,10 @@ class UserModel {
         university: university ?? this.university,
         department: department ?? this.department,
         studentId: studentId ?? this.studentId,
+        gender: gender ?? this.gender,
+        schoolEmail: schoolEmail ?? this.schoolEmail,
+        studentVerified: studentVerified ?? this.studentVerified,
+        studentVerifiedAt: studentVerifiedAt ?? this.studentVerifiedAt,
       );
 
   Map<String, dynamic> toJson() => {
@@ -57,6 +73,11 @@ class UserModel {
         if (university != null) 'university': university,
         if (department != null) 'department': department,
         if (studentId != null) 'student_id': studentId,
+        if (gender != null) 'gender': gender,
+        if (schoolEmail != null) 'school_email': schoolEmail,
+        'student_verified': studentVerified,
+        if (studentVerifiedAt != null)
+          'student_verified_at': studentVerifiedAt!.toIso8601String(),
       };
 
   factory UserModel.fromJson(Map<String, dynamic> json) => UserModel(
@@ -69,7 +90,25 @@ class UserModel {
         university: json['university'] as String?,
         department: json['department'] as String?,
         studentId: json['student_id'] as String?,
+        gender: json['gender'] as String?,
+        schoolEmail: json['school_email'] as String?,
+        studentVerified: json['student_verified'] as bool? ?? false,
+        studentVerifiedAt: json['student_verified_at'] == null
+            ? null
+            : DateTime.parse(json['student_verified_at'] as String),
       );
+}
+
+class TrustScore {
+  final double average;
+  final int count;
+
+  const TrustScore({required this.average, required this.count});
+
+  bool get hasReviews => count > 0;
+  String get display => hasReviews ? average.toStringAsFixed(1) : '4.8';
+
+  static const empty = TrustScore(average: 4.8, count: 0);
 }
 
 class MeetingModel {

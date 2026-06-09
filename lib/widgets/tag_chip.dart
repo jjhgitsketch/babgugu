@@ -23,8 +23,8 @@ class TagChip extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         padding: EdgeInsets.symmetric(
-          horizontal: small ? 10 : 14,
-          vertical: small ? 5 : 8,
+          horizontal: small ? 10 : 12,
+          vertical: small ? 5 : 6,
         ),
         decoration: BoxDecoration(
           color: isSelected ? AppColors.primary : AppColors.tagBg,
@@ -37,8 +37,8 @@ class TagChip extends StatelessWidget {
         child: Text(
           tag,
           style: TextStyle(
-            fontSize: small ? 12 : 13,
-            fontWeight: FontWeight.w600,
+            fontSize: small ? 11 : 12,
+            fontWeight: FontWeight.w700,
             color: isSelected ? Colors.white : AppColors.tagText,
           ),
         ),

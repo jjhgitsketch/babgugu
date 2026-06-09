@@ -1,9 +1,13 @@
 // lib/screens/chat_screen.dart
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../models/models.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import 'settlement_request_screen.dart';
 import 'settlement_screen.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -15,20 +19,6 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _MemberInfo {
-  final String userId;
-  final String name;
-  final String? avatarUrl;
-  bool selected;
-
-  _MemberInfo({
-    required this.userId,
-    required this.name,
-    this.avatarUrl,
-    this.selected = true,
-  });
-}
-
 class _ChatScreenState extends State<ChatScreen> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
@@ -36,61 +26,12 @@ class _ChatScreenState extends State<ChatScreen> {
   RealtimeChannel? _channel;
   bool _loading = true;
   bool _sending = false;
-  List<_MemberInfo> _members = [];
 
   @override
   void initState() {
     super.initState();
     _loadMessages();
     _subscribeRealtime();
-    _loadMembers();
-  }
-
-  Future<void> _loadMembers() async {
-    try {
-      final data = await SupabaseService.getMeetingMembers(widget.meeting.id);
-      final members = data.map((member) {
-        final user = member['users'] as Map<String, dynamic>?;
-        final uid = member['user_id'] as String? ?? '';
-        final nickname = user?['nickname'] as String?;
-        final name = nickname?.isNotEmpty == true
-            ? nickname!
-            : (user?['name'] as String?) ?? '멤버';
-        final avatar = user?['avatar_url'] as String?;
-        return _MemberInfo(
-          userId: uid,
-          name: name,
-          avatarUrl: avatar,
-          selected: true,
-        );
-      }).toList();
-      if (mounted) setState(() => _members = members);
-    } catch (e) {
-      debugPrint('[ChatScreen] _loadMembers error: $e');
-    }
-  }
-
-  Future<void> _loadMessages() async {
-    try {
-      final msgs = await SupabaseService.getMessages(widget.meeting.id);
-      setState(() {
-        _messages
-          ..clear()
-          ..addAll(msgs);
-        _loading = false;
-      });
-      _scrollToBottom();
-    } catch (e) {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  void _subscribeRealtime() {
-    _channel = SupabaseService.subscribeMessages(widget.meeting.id, (message) {
-      if (_messages.any((m) => m.id == message.id)) return;
-      setState(() => _messages.add(message));
-      _scrollToBottom();
-    });
   }
 
   @override
@@ -101,12 +42,38 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
+  Future<void> _loadMessages() async {
+    try {
+      final messages = await SupabaseService.getMessages(widget.meeting.id);
+      if (!mounted) return;
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(messages);
+        _loading = false;
+      });
+      _scrollToBottom();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _showSnackBar('채팅을 불러오지 못했어요: $e');
+    }
+  }
+
+  void _subscribeRealtime() {
+    _channel = SupabaseService.subscribeMessages(widget.meeting.id, (message) {
+      if (!mounted || _messages.any((m) => m.id == message.id)) return;
+      setState(() => _messages.add(message));
+      _scrollToBottom();
+    });
+  }
+
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 300),
+        duration: const Duration(milliseconds: 250),
         curve: Curves.easeOut,
       );
     });
@@ -128,383 +95,84 @@ class _ChatScreenState extends State<ChatScreen> {
         type: type,
       );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('전송 실패: $e'), backgroundColor: Colors.red),
-        );
-      }
+      _showSnackBar('전송에 실패했어요: $e');
     } finally {
       if (mounted) setState(() => _sending = false);
     }
   }
 
-  void _showDutchPayDialog() {
-    final totalController = TextEditingController();
-    final bankController = TextEditingController();
-    final dialogMembers = _members.isEmpty
-        ? [
-            _MemberInfo(
-              userId: SupabaseService.userId,
-              name: currentUser?.displayName ?? '나',
-            )
-          ]
-        : _members
-            .map(
-              (member) => _MemberInfo(
-                userId: member.userId,
-                name: member.name,
-                avatarUrl: member.avatarUrl,
-              ),
-            )
-            .toList();
-
-    const avatarColors = [
-      Colors.black87,
-      Color(0xFF7B52AB),
-      Color(0xFFFFB347),
-      Color(0xFF4CAF50),
-      Color(0xFF2196F3),
-      AppColors.primary,
-    ];
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => StatefulBuilder(
-        builder: (ctx, setModal) {
-          final total =
-              int.tryParse(totalController.text.replaceAll(',', '')) ?? 0;
-          final selectedMembers =
-              dialogMembers.where((member) => member.selected).toList();
-          final count = selectedMembers.length;
-          final perPerson = count > 0 ? (total / count).round() : 0;
-
-          return Padding(
-            padding:
-                EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-            child: Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-              ),
-              padding: const EdgeInsets.all(24),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.grey[300],
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      '더치페이 정산',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    const Text(
-                      '총 금액',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: totalController,
-                      keyboardType: TextInputType.number,
-                      onChanged: (_) => setModal(() {}),
-                      decoration: const InputDecoration(
-                        hintText: '총 결제 금액',
-                        suffixText: '원',
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
-                      children: [
-                        const Text(
-                          '정산 인원',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '$count명 선택',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: AppColors.primary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      '정산할 멤버를 선택하거나 해제하세요',
-                      style:
-                          TextStyle(fontSize: 11, color: AppColors.textLight),
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: List.generate(dialogMembers.length, (i) {
-                        final member = dialogMembers[i];
-                        final color = avatarColors[i % avatarColors.length];
-                        return GestureDetector(
-                          onTap: () => setModal(
-                              () => member.selected = !member.selected),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Stack(
-                                children: [
-                                  Container(
-                                    width: 52,
-                                    height: 52,
-                                    decoration: BoxDecoration(
-                                      color: member.selected
-                                          ? color
-                                          : Colors.grey[300],
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: member.selected
-                                            ? color
-                                            : Colors.grey[400]!,
-                                        width: member.selected ? 3 : 1,
-                                      ),
-                                    ),
-                                    child: member.avatarUrl != null
-                                        ? ClipOval(
-                                            child: Image.network(
-                                              member.avatarUrl!,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (_, __, ___) =>
-                                                  const Icon(
-                                                Icons.person_rounded,
-                                                color: Colors.white,
-                                                size: 26,
-                                              ),
-                                            ),
-                                          )
-                                        : const Center(
-                                            child: Icon(
-                                              Icons.person_rounded,
-                                              color: Colors.white,
-                                              size: 26,
-                                            ),
-                                          ),
-                                  ),
-                                  if (member.selected)
-                                    Positioned(
-                                      right: 0,
-                                      bottom: 0,
-                                      child: Container(
-                                        width: 18,
-                                        height: 18,
-                                        decoration: const BoxDecoration(
-                                          color: AppColors.primary,
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: const Icon(
-                                          Icons.check,
-                                          size: 12,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              SizedBox(
-                                width: 52,
-                                child: Text(
-                                  member.name,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: member.selected
-                                        ? AppColors.textPrimary
-                                        : Colors.grey[400],
-                                  ),
-                                  textAlign: TextAlign.center,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }),
-                    ),
-                    const SizedBox(height: 20),
-                    const Text(
-                      '계좌번호',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: bankController,
-                      onChanged: (_) => setModal(() {}),
-                      decoration: const InputDecoration(
-                        hintText: '예: 카카오뱅크 3333-00-0000000 홍길동',
-                        prefixIcon: Icon(
-                          Icons.account_balance_outlined,
-                          size: 18,
-                          color: AppColors.textLight,
-                        ),
-                      ),
-                    ),
-                    if (total > 0 && count > 0) ...[
-                      const SizedBox(height: 16),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: AppColors.primaryBg,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Column(
-                          children: [
-                            Text(
-                              '$count명이 나눠내요',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '${_formatWon(perPerson)}원',
-                              style: const TextStyle(
-                                fontSize: 28,
-                                fontWeight: FontWeight.w900,
-                                color: AppColors.primary,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '총 ${_formatWon(total)}원',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: total > 0 && count > 0
-                            ? () async {
-                                Navigator.pop(ctx);
-                                await _createAndShareSettlement(
-                                  totalAmount: total,
-                                  perPersonAmount: perPerson,
-                                  bankInfo: bankController.text.trim(),
-                                  members: selectedMembers,
-                                );
-                              }
-                            : null,
-                        child: const Text('채팅방에 공유하기'),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
+  Future<void> _openSettlementRequest() async {
+    final result = await Navigator.push<SettlementRequestResult>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SettlementRequestScreen(meeting: widget.meeting),
+        fullscreenDialog: true,
       ),
+    );
+    if (result == null) return;
+
+    await _sendMessage(
+      text: [
+        'settlement_request',
+        'total:${result.totalAmount}',
+        'per_person:${result.perPersonAmount}',
+        'members:${result.memberNames.join(',')}',
+      ].join('\n'),
+      type: 'dutchPay',
     );
   }
 
-  Future<void> _createAndShareSettlement({
-    required int totalAmount,
-    required int perPersonAmount,
-    required String bankInfo,
-    required List<_MemberInfo> members,
-  }) async {
-    if (_sending) return;
-    setState(() => _sending = true);
+  Future<void> _markMeetingComplete() async {
+    await _sendMessage(
+      text: '오늘 모임이 완료되었어요!\n모임장은 정산을 진행해주세요',
+      type: 'system',
+    );
+  }
 
-    try {
-      final settlementId = await SupabaseService.createSettlement(
-        meetingId: widget.meeting.id,
-        totalAmount: totalAmount,
-        perPersonAmount: perPersonAmount,
-        bankInfo: bankInfo,
-        members: members
-            .map(
-              (member) => {
-                'user_id': member.userId,
-                'user_name': member.name,
-                'amount': perPersonAmount,
-              },
-            )
-            .toList(),
-      );
-      final memberNames = members.map((member) => member.name).join(', ');
-      final message = [
-        'settlement_id:$settlementId',
-        '더치페이 정산',
-        '총 금액: ${_formatWon(totalAmount)}원',
-        '1인당: ${_formatWon(perPersonAmount)}원',
-        '정산 멤버: $memberNames',
-        if (bankInfo.isNotEmpty) '입금 계좌: $bankInfo',
-      ].join('\n');
+  Future<void> _sendRandomPick() async {
+    final members = await SupabaseService.getMeetingMembers(widget.meeting.id);
+    final names = members
+        .map((m) {
+          final user = m['users'] as Map<String, dynamic>?;
+          return (user?['nickname'] ?? user?['name'] ?? '').toString().trim();
+        })
+        .where((name) => name.isNotEmpty)
+        .toList();
 
-      await SupabaseService.sendMessage(
-        meetingId: widget.meeting.id,
-        text: message,
-        type: 'dutchPay',
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('정산 공유 실패: $e'), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _sending = false);
+    if (names.isEmpty) {
+      _showSnackBar('랜덤으로 뽑을 멤버가 아직 없어요.');
+      return;
     }
+
+    final picked = names[Random().nextInt(names.length)];
+    await _sendMessage(text: '랜덤 뽑기 결과: $picked');
+  }
+
+  void _showSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: Colors.white,
       appBar: AppBar(
+        centerTitle: true,
+        title: Text(
+          widget.meeting.title.isEmpty ? '모임 제목' : widget.meeting.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+        ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          '모임 채팅',
-          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(height: 1, color: const Color(0xFFDADADA)),
         ),
       ),
       body: Column(
@@ -514,400 +182,451 @@ class _ChatScreenState extends State<ChatScreen> {
                 ? const Center(
                     child: CircularProgressIndicator(color: AppColors.primary),
                   )
-                : _messages.isEmpty
-                    ? const Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.chat_bubble_outline_rounded,
-                              size: 42,
-                              color: AppColors.textLight,
-                            ),
-                            SizedBox(height: 12),
-                            Text(
-                              '첫 메시지를 보내보세요',
-                              style: TextStyle(
-                                color: AppColors.textSecondary,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+                    itemCount: _messages.isEmpty ? 1 : _messages.length,
+                    itemBuilder: (context, index) {
+                      if (_messages.isEmpty) return const _EmptyChatHint();
+                      return _MessageBubble(
+                        message: _messages[index],
+                        meeting: widget.meeting,
+                        onSettlementCompleted: () => _sendMessage(
+                          text: '정산이 완료되었어요.\n모임 평가까지 모두 마쳤습니다.',
+                          type: 'system',
                         ),
-                      )
-                    : ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _messages.length,
-                        itemBuilder: (_, i) => _MessageBubble(
-                          message: _messages[i],
-                          meeting: widget.meeting,
-                        ),
-                      ),
+                      );
+                    },
+                  ),
           ),
-          Container(
-            padding: EdgeInsets.only(
-              left: 12,
-              right: 12,
-              bottom: MediaQuery.of(context).viewInsets.bottom + 12,
-              top: 8,
-            ),
-            color: Colors.white,
-            child: Row(
-              children: [
-                GestureDetector(
-                  onTap: _showDutchPayDialog,
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: AppColors.tagBg,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Center(
-                      child: Icon(
-                        Icons.receipt_long_rounded,
-                        color: AppColors.primary,
-                        size: 20,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    decoration: const InputDecoration(
-                      hintText: '모임 멤버들과 이야기해보세요',
-                      hintStyle: TextStyle(
-                        color: AppColors.textLight,
-                        fontSize: 14,
-                      ),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
-                      ),
-                      fillColor: AppColors.bg,
-                      filled: true,
-                    ),
-                    onSubmitted: (_) => _sendMessage(),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: _sending ? null : () => _sendMessage(),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: _sending ? AppColors.textLight : AppColors.primary,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: _sending
-                        ? const Center(
-                            child: SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
-                            ),
-                          )
-                        : const Icon(
-                            Icons.arrow_upward_rounded,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                  ),
-                ),
-              ],
-            ),
+          _QuickActions(
+            onRandomPick: _sendRandomPick,
+            onComplete: _markMeetingComplete,
+            onSettlement: _openSettlementRequest,
+          ),
+          _InputBar(
+            controller: _controller,
+            sending: _sending,
+            onSubmitted: (_) => _sendMessage(),
+            onSend: () => _sendMessage(),
           ),
         ],
       ),
     );
   }
-
-  static String _formatWon(int amount) {
-    final text = amount.toString();
-    final buffer = StringBuffer();
-    for (var i = 0; i < text.length; i++) {
-      if (i > 0 && (text.length - i) % 3 == 0) buffer.write(',');
-      buffer.write(text[i]);
-    }
-    return buffer.toString();
-  }
 }
 
-class _MessageBubble extends StatelessWidget {
-  final ChatMessage message;
-  final MeetingModel meeting;
+class _QuickActions extends StatelessWidget {
+  final VoidCallback onRandomPick;
+  final VoidCallback onComplete;
+  final VoidCallback onSettlement;
 
-  const _MessageBubble({required this.message, required this.meeting});
+  const _QuickActions({
+    required this.onRandomPick,
+    required this.onComplete,
+    required this.onSettlement,
+  });
 
   @override
   Widget build(BuildContext context) {
-    if (message.type == MessageType.system) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Center(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-            decoration: BoxDecoration(
-              color: AppColors.divider,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              message.text,
-              style: const TextStyle(
-                fontSize: 11,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    if (message.type == MessageType.dutchPay) {
-      return _SettlementMessageCard(message: message, meeting: meeting);
-    }
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Align(
-        alignment: message.isMe ? Alignment.centerRight : Alignment.centerLeft,
-        child: Column(
-          crossAxisAlignment:
-              message.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+    return Container(
+      width: double.infinity,
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
           children: [
-            if (!message.isMe)
-              Padding(
-                padding: const EdgeInsets.only(left: 4, bottom: 3),
-                child: Text(
-                  message.senderName,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textSecondary,
-                    fontWeight: FontWeight.w600,
+            _QuickActionButton(label: '랜덤 뽑기', onTap: onRandomPick),
+            const SizedBox(width: 10),
+            _QuickActionButton(label: '모임 완료', onTap: onComplete),
+            const SizedBox(width: 10),
+            _QuickActionButton(label: '1/N 정산하기', onTap: onSettlement),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickActionButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+
+  const _QuickActionButton({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 27,
+      child: ElevatedButton(
+        onPressed: onTap,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(horizontal: 13),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
+        ),
+      ),
+    );
+  }
+}
+
+class _InputBar extends StatelessWidget {
+  final TextEditingController controller;
+  final bool sending;
+  final ValueChanged<String> onSubmitted;
+  final VoidCallback onSend;
+
+  const _InputBar({
+    required this.controller,
+    required this.sending,
+    required this.onSubmitted,
+    required this.onSend,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: Color(0xFFDADADA))),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: 42,
+                child: TextField(
+                  controller: controller,
+                  onSubmitted: onSubmitted,
+                  minLines: 1,
+                  maxLines: 1,
+                  textInputAction: TextInputAction.send,
+                  decoration: InputDecoration(
+                    hintText: '모임 멤버들과 이야기 해보세요!',
+                    hintStyle: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF909090),
+                    ),
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 13),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(0),
+                      borderSide: const BorderSide(color: Color(0xFFDADADA)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(0),
+                      borderSide: const BorderSide(color: AppColors.primary),
+                    ),
                   ),
                 ),
               ),
-            Row(
-              mainAxisAlignment: message.isMe
-                  ? MainAxisAlignment.end
-                  : MainAxisAlignment.start,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (message.isMe) ...[
-                  Text(
-                    _timeStr(message.time),
-                    style: const TextStyle(
-                        fontSize: 10, color: AppColors.textLight),
-                  ),
-                  const SizedBox(width: 4),
-                ],
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  constraints: BoxConstraints(
-                    maxWidth: MediaQuery.of(context).size.width * 0.65,
-                  ),
-                  decoration: BoxDecoration(
-                    color: message.isMe ? AppColors.primary : Colors.white,
-                    borderRadius: BorderRadius.only(
-                      topLeft: const Radius.circular(16),
-                      topRight: const Radius.circular(16),
-                      bottomLeft: Radius.circular(message.isMe ? 16 : 4),
-                      bottomRight: Radius.circular(message.isMe ? 4 : 16),
-                    ),
-                    border: message.isMe
-                        ? null
-                        : Border.all(color: AppColors.divider),
-                  ),
-                  child: Text(
-                    message.text,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color:
-                          message.isMe ? Colors.white : AppColors.textPrimary,
-                      height: 1.4,
-                    ),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 35,
+              height: 35,
+              child: ElevatedButton(
+                onPressed: sending ? null : onSend,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  disabledBackgroundColor: AppColors.textLight,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: EdgeInsets.zero,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                if (!message.isMe) ...[
-                  const SizedBox(width: 4),
-                  Text(
-                    _timeStr(message.time),
-                    style: const TextStyle(
-                        fontSize: 10, color: AppColors.textLight),
-                  ),
-                ],
-              ],
+                child: sending
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Icon(Icons.arrow_upward_rounded, size: 19),
+              ),
             ),
           ],
         ),
       ),
     );
   }
-
-  String _timeStr(DateTime dt) {
-    final hour = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
-    final minute = dt.minute.toString().padLeft(2, '0');
-    final ampm = dt.hour < 12 ? '오전' : '오후';
-    return '$ampm $hour:$minute';
-  }
 }
 
-class _SettlementMessageCard extends StatelessWidget {
+class _MessageBubble extends StatelessWidget {
   final ChatMessage message;
   final MeetingModel meeting;
+  final Future<void> Function() onSettlementCompleted;
 
-  const _SettlementMessageCard({
+  const _MessageBubble({
     required this.message,
     required this.meeting,
+    required this.onSettlementCompleted,
   });
 
   @override
   Widget build(BuildContext context) {
-    final data = _SettlementMessageData.parse(message.text);
-    final isHost = meeting.hostId == SupabaseService.userId;
+    if (message.type == MessageType.system) {
+      return _CompletionNotice(message: message);
+    }
+
+    if (message.type == MessageType.dutchPay) {
+      return _SettlementRequestBubble(
+        message: message,
+        meeting: meeting,
+        onSettlementCompleted: onSettlementCompleted,
+      );
+    }
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      padding: const EdgeInsets.only(bottom: 14),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment:
+            message.isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: const BoxDecoration(
-              color: AppColors.primary,
-              shape: BoxShape.circle,
-            ),
-            child: const Center(
-              child: Icon(
-                Icons.receipt_long_rounded,
-                color: Colors.white,
-                size: 18,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
+          if (!message.isMe) ...[
+            const _ChatAvatar(label: '밥'),
+            const SizedBox(width: 9),
+          ],
+          if (message.isMe) _MessageTime(time: message.time),
+          if (message.isMe) const SizedBox(width: 9),
+          Flexible(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: message.isMe
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
               children: [
-                Text(
-                  message.senderName,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textSecondary,
-                    fontWeight: FontWeight.w600,
+                if (!message.isMe)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(
+                      message.senderName,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFFA1A1A1),
+                      ),
+                    ),
+                  ),
+                Container(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.sizeOf(context).width * 0.62,
+                  ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: message.isMe
+                        ? AppColors.primary
+                        : const Color(0xFFDADADA),
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(message.isMe ? 6 : 0),
+                      topRight: Radius.circular(message.isMe ? 0 : 6),
+                      bottomLeft: const Radius.circular(6),
+                      bottomRight: const Radius.circular(6),
+                    ),
+                  ),
+                  child: Text(
+                    message.text,
+                    style: TextStyle(
+                      fontSize: 11,
+                      height: 1.35,
+                      color: message.isMe ? Colors.white : Colors.black,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 4),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.divider),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
+              ],
+            ),
+          ),
+          if (!message.isMe) const SizedBox(width: 6),
+          if (!message.isMe) _MessageTime(time: message.time),
+        ],
+      ),
+    );
+  }
+}
+
+class _CompletionNotice extends StatelessWidget {
+  final ChatMessage message;
+
+  const _CompletionNotice({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    final isCompletion = message.text.contains('모임이 완료');
+    if (!isCompletion) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: AppColors.primaryBg,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              message.text,
+              style: const TextStyle(fontSize: 12, color: AppColors.primary),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        _TimeDivider(time: message.time),
+        const SizedBox(height: 25),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 17),
+          decoration: BoxDecoration(
+            color: AppColors.primaryBg,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFDADADA)),
+          ),
+          child: const Column(
+            children: [
+              Text(
+                '오늘 모임이 완료되었어요!',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.primary,
+                ),
+              ),
+              SizedBox(height: 5),
+              Text(
+                '모임장은 정산을 진행해주세요',
+                style: TextStyle(fontSize: 13, color: Colors.black),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 25),
+      ],
+    );
+  }
+}
+
+class _SettlementRequestBubble extends StatelessWidget {
+  final ChatMessage message;
+  final MeetingModel meeting;
+  final Future<void> Function() onSettlementCompleted;
+
+  const _SettlementRequestBubble({
+    required this.message,
+    required this.meeting,
+    required this.onSettlementCompleted,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final settlement = _SettlementMessage.parse(message.text);
+    final cardWidth = min(223.0, MediaQuery.sizeOf(context).width * 0.62);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 22),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          _MessageTime(time: message.time),
+          const SizedBox(width: 6),
+          Container(
+            width: cardWidth,
+            padding: const EdgeInsets.fromLTRB(19, 30, 19, 19),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: const Color(0xFFDADADA)),
+            ),
+            child: Column(
+              children: [
+                const Text(
+                  '오늘 모임이 완료되었어요!',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  '1인 정산 비용',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${_formatWon(settlement.perPersonAmount)}원',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primary,
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        '정산 요청이 도착했어요',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      const Text(
-                        '1인당 정산 비용',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        data.perPersonLabel,
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '총 비용: ${data.totalLabel}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                      if (data.memberNames.isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          '멤버: ${data.memberNames.join(', ')}',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => SettlementScreen(
-                                  meeting: meeting,
-                                  isHost: isHost,
-                                  settlementId: data.settlementId,
-                                  totalAmount: data.totalAmount,
-                                  bankInfo: data.bankInfo,
-                                  memberNames: data.memberNames,
-                                ),
-                              ),
-                            );
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            elevation: 0,
-                          ),
-                          child: const Text(
-                            '정산 확인하기',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                            ),
+                ),
+                const SizedBox(height: 14),
+                Container(
+                    width: 110, height: 1, color: const Color(0xFFDADADA)),
+                const SizedBox(height: 15),
+                Text(
+                  '총 비용: ${_formatWon(settlement.totalAmount)}원',
+                  style:
+                      const TextStyle(fontSize: 11, color: Color(0xFF909090)),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  '서로의 신뢰를 위해 잊지 않게\n정산 금액을 확인해주세요',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12, color: Colors.black),
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  height: 32,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      final completed = await Navigator.push<bool>(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => SettlementScreen(
+                            meeting: meeting,
+                            isHost: meeting.hostId == SupabaseService.userId,
+                            totalAmount: settlement.totalAmount,
+                            memberNames: settlement.memberNames,
                           ),
                         ),
+                      );
+                      if (completed == true &&
+                          meeting.hostId == SupabaseService.userId) {
+                        await onSettlementCompleted();
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                    ],
+                      padding: EdgeInsets.zero,
+                    ),
+                    child: const Text(
+                      '확인하기',
+                      style:
+                          TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                    ),
                   ),
                 ),
               ],
@@ -919,45 +638,32 @@ class _SettlementMessageCard extends StatelessWidget {
   }
 }
 
-class _SettlementMessageData {
-  final String? settlementId;
+class _SettlementMessage {
   final int totalAmount;
-  final String totalLabel;
-  final String perPersonLabel;
-  final String bankInfo;
+  final int perPersonAmount;
   final List<String> memberNames;
 
-  const _SettlementMessageData({
-    required this.settlementId,
+  const _SettlementMessage({
     required this.totalAmount,
-    required this.totalLabel,
-    required this.perPersonLabel,
-    required this.bankInfo,
+    required this.perPersonAmount,
     required this.memberNames,
   });
 
-  static _SettlementMessageData parse(String text) {
-    String? settlementId;
-    var totalAmount = 0;
-    var totalLabel = '0원';
-    var perPersonLabel = '0원';
-    var bankInfo = '';
+  static _SettlementMessage parse(String text) {
+    var total = 0;
+    var perPerson = 0;
     var memberNames = <String>[];
 
     for (final rawLine in text.split('\n')) {
       final line = rawLine.trim();
-      if (line.startsWith('settlement_id:')) {
-        settlementId = line.replaceFirst('settlement_id:', '').trim();
-      } else if (line.startsWith('총 금액:')) {
-        totalLabel = line.replaceFirst('총 금액:', '').trim();
-        totalAmount = _parseWon(totalLabel);
-      } else if (line.startsWith('1인당:')) {
-        perPersonLabel = line.replaceFirst('1인당:', '').trim();
-      } else if (line.startsWith('입금 계좌:')) {
-        bankInfo = line.replaceFirst('입금 계좌:', '').trim();
-      } else if (line.startsWith('정산 멤버:')) {
+      if (line.startsWith('total:')) {
+        total = int.tryParse(line.replaceFirst('total:', '').trim()) ?? total;
+      } else if (line.startsWith('per_person:')) {
+        perPerson = int.tryParse(line.replaceFirst('per_person:', '').trim()) ??
+            perPerson;
+      } else if (line.startsWith('members:')) {
         memberNames = line
-            .replaceFirst('정산 멤버:', '')
+            .replaceFirst('members:', '')
             .split(',')
             .map((name) => name.trim())
             .where((name) => name.isNotEmpty)
@@ -965,18 +671,108 @@ class _SettlementMessageData {
       }
     }
 
-    return _SettlementMessageData(
-      settlementId: settlementId,
-      totalAmount: totalAmount,
-      totalLabel: totalLabel,
-      perPersonLabel: perPersonLabel,
-      bankInfo: bankInfo,
+    if (total == 0 || perPerson == 0) {
+      final numbers = RegExp(r'\d[\d,]*')
+          .allMatches(text)
+          .map((match) {
+            return int.tryParse(match.group(0)!.replaceAll(',', '')) ?? 0;
+          })
+          .where((value) => value > 0)
+          .toList();
+      if (numbers.isNotEmpty) total = total == 0 ? numbers.first : total;
+      if (numbers.length > 1) {
+        perPerson = perPerson == 0 ? numbers[1] : perPerson;
+      }
+    }
+
+    return _SettlementMessage(
+      totalAmount: total,
+      perPersonAmount: perPerson,
       memberNames: memberNames,
     );
   }
+}
 
-  static int _parseWon(String value) {
-    final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
-    return int.tryParse(digits) ?? 0;
+class _TimeDivider extends StatelessWidget {
+  final DateTime time;
+
+  const _TimeDivider({required this.time});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const Expanded(child: Divider(color: Color(0xFFA1A1A1))),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: _MessageTime(time: time, fontSize: 12),
+        ),
+        const Expanded(child: Divider(color: Color(0xFFA1A1A1))),
+      ],
+    );
   }
+}
+
+class _MessageTime extends StatelessWidget {
+  final DateTime time;
+  final double fontSize;
+
+  const _MessageTime({required this.time, this.fontSize = 10});
+
+  @override
+  Widget build(BuildContext context) {
+    final period = time.hour < 12 ? '오전' : '오후';
+    final hour =
+        time.hour > 12 ? time.hour - 12 : (time.hour == 0 ? 12 : time.hour);
+    final minute = time.minute.toString().padLeft(2, '0');
+    return Text(
+      '$period $hour:$minute',
+      style: TextStyle(fontSize: fontSize, color: const Color(0xFF7C7C7C)),
+    );
+  }
+}
+
+class _ChatAvatar extends StatelessWidget {
+  final String label;
+
+  const _ChatAvatar({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return CircleAvatar(
+      radius: 24,
+      backgroundColor: const Color(0xFFFFE5DD),
+      child: Text(
+        label,
+        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+      ),
+    );
+  }
+}
+
+class _EmptyChatHint extends StatelessWidget {
+  const _EmptyChatHint();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.only(top: 180),
+      child: Center(
+        child: Text(
+          '모임 멤버들과 첫 이야기를 시작해보세요',
+          style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+        ),
+      ),
+    );
+  }
+}
+
+String _formatWon(int amount) {
+  final text = amount.toString();
+  final buffer = StringBuffer();
+  for (var i = 0; i < text.length; i++) {
+    if (i > 0 && (text.length - i) % 3 == 0) buffer.write(',');
+    buffer.write(text[i]);
+  }
+  return buffer.toString();
 }

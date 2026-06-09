@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_theme.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -34,7 +35,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     try {
       await Supabase.instance.client.auth.resetPasswordForEmail(
         email,
-        redirectTo: 'io.supabase.mealmate://reset-callback',
+        redirectTo: kIsWeb
+            ? 'https://mobilecomputing-indol.vercel.app'
+            : 'io.supabase.mealmate://reset-callback',
+            
       );
       setState(() { _sent = true; _loading = false; });
     } on AuthException catch (e) {
@@ -68,7 +72,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         ),
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
+        child: Padding(
           padding: const EdgeInsets.all(28),
           child: _sent ? _SentView(
             email: _emailController.text.trim(),
@@ -255,7 +259,7 @@ class _SentView extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 40),
+        const Spacer(),
 
         SizedBox(
           width: double.infinity,

@@ -1,13 +1,15 @@
 // lib/screens/main_screen.dart
 import 'package:flutter/material.dart';
-import '../theme/app_theme.dart';
+
+import '../models/models.dart';
 import '../services/notification_service.dart';
 import '../services/supabase_service.dart';
-import 'meeting_detail_screen.dart';
-import 'home_screen.dart';
-import 'explore_screen.dart';
-import 'profile_screen.dart';
+import '../theme/app_theme.dart';
+import 'chat_screen.dart';
 import 'create_meeting_screen.dart';
+import 'explore_screen.dart';
+import 'home_screen.dart';
+import 'profile_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -18,6 +20,8 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _index = 0;
+  int _chatTabVersion = 0;
+  int _profileTabVersion = 0;
   final Set<int> _visited = {0};
 
   @override
@@ -37,24 +41,27 @@ class _MainScreenState extends State<MainScreen> {
     super.dispose();
   }
 
-  void _onTabTap(int i) {
+  void _onTabTap(int index) {
     setState(() {
-      _visited.add(i);
-      _index = i;
+      _visited.add(index);
+      _index = index;
+      if (index == 2) _chatTabVersion++;
+      if (index == 3) _profileTabVersion++;
     });
+    if (index == 2 || index == 3) _startNotifications();
   }
 
-  Widget _buildTab(int i) {
-    if (!_visited.contains(i)) return const SizedBox.shrink();
-    switch (i) {
+  Widget _buildTab(int index) {
+    if (!_visited.contains(index)) return const SizedBox.shrink();
+    switch (index) {
       case 0:
         return const HomeScreen();
       case 1:
         return const ExploreScreen();
       case 2:
-        return const MyMoimScreen();
+        return ChatHubScreen(key: ValueKey(_chatTabVersion));
       case 3:
-        return const ProfileScreen();
+        return ProfileScreen(key: ValueKey(_profileTabVersion));
       default:
         return const SizedBox.shrink();
     }
@@ -63,28 +70,31 @@ class _MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     final bottomPad = MediaQuery.of(context).padding.bottom;
+    final showCreateButton = _index == 0 || _index == 1;
 
     return Scaffold(
       body: IndexedStack(
         index: _index,
         children: List.generate(4, _buildTab),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const CreateMeetingScreen(),
-              fullscreenDialog: true,
-            ),
-          );
-          _startNotifications();
-        },
-        backgroundColor: AppColors.primary,
-        elevation: 4,
-        shape: const CircleBorder(),
-        child: const Icon(Icons.add, color: Colors.white, size: 28),
-      ),
+      floatingActionButton: showCreateButton
+          ? FloatingActionButton(
+              onPressed: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const CreateMeetingScreen(),
+                    fullscreenDialog: true,
+                  ),
+                );
+                await _startNotifications();
+              },
+              backgroundColor: AppColors.primary,
+              elevation: 4,
+              shape: const CircleBorder(),
+              child: const Icon(Icons.add, color: Colors.white, size: 28),
+            )
+          : null,
       bottomNavigationBar: SizedBox(
         height: 60 + bottomPad,
         child: Material(
@@ -92,39 +102,43 @@ class _MainScreenState extends State<MainScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(height: 1, color: AppColors.divider),
+              Container(height: 1, color: const Color(0xFFDADADA)),
               SizedBox(
                 height: 58,
                 child: Row(
                   children: [
                     _NavItem(
-                        icon: Icons.home_outlined,
-                        activeIcon: Icons.home_rounded,
-                        label: '홈',
-                        index: 0,
-                        current: _index,
-                        onTap: _onTabTap),
+                      icon: Icons.home_outlined,
+                      activeIcon: Icons.home_rounded,
+                      label: '홈',
+                      index: 0,
+                      current: _index,
+                      onTap: _onTabTap,
+                    ),
                     _NavItem(
-                        icon: Icons.search_outlined,
-                        activeIcon: Icons.search,
-                        label: '탐색',
-                        index: 1,
-                        current: _index,
-                        onTap: _onTabTap),
+                      icon: Icons.explore_outlined,
+                      activeIcon: Icons.explore_rounded,
+                      label: '탐색',
+                      index: 1,
+                      current: _index,
+                      onTap: _onTabTap,
+                    ),
                     _NavItem(
-                        icon: Icons.people_outline_rounded,
-                        activeIcon: Icons.people_rounded,
-                        label: 'My모임',
-                        index: 2,
-                        current: _index,
-                        onTap: _onTabTap),
+                      icon: Icons.chat_bubble_outline_rounded,
+                      activeIcon: Icons.chat_bubble_rounded,
+                      label: '채팅',
+                      index: 2,
+                      current: _index,
+                      onTap: _onTabTap,
+                    ),
                     _NavItem(
-                        icon: Icons.settings_outlined,
-                        activeIcon: Icons.settings_rounded,
-                        label: '설정',
-                        index: 3,
-                        current: _index,
-                        onTap: _onTabTap),
+                      icon: Icons.account_circle_outlined,
+                      activeIcon: Icons.account_circle_rounded,
+                      label: '마이',
+                      index: 3,
+                      current: _index,
+                      onTap: _onTabTap,
+                    ),
                   ],
                 ),
               ),
@@ -166,16 +180,16 @@ class _NavItem extends StatelessWidget {
           children: [
             Icon(
               isActive ? activeIcon : icon,
-              color: isActive ? AppColors.primary : AppColors.textLight,
-              size: 24,
+              color: isActive ? AppColors.primary : const Color(0xFFA1A1A1),
+              size: 26,
             ),
             const SizedBox(height: 2),
             Text(
               label,
               style: TextStyle(
-                fontSize: 10,
-                fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-                color: isActive ? AppColors.primary : AppColors.textLight,
+                fontSize: 12,
+                fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                color: isActive ? AppColors.primary : Colors.black,
               ),
             ),
           ],
@@ -185,19 +199,18 @@ class _NavItem extends StatelessWidget {
   }
 }
 
-// My모임 화면 (Image 6 - 내가 참여하는 모임)
-class MyMoimScreen extends StatefulWidget {
-  const MyMoimScreen({super.key});
+class ChatHubScreen extends StatefulWidget {
+  const ChatHubScreen({super.key});
 
   @override
-  State<MyMoimScreen> createState() => _MyMoimScreenState();
+  State<ChatHubScreen> createState() => _ChatHubScreenState();
 }
 
-class _MyMoimScreenState extends State<MyMoimScreen> {
+class _ChatHubScreenState extends State<ChatHubScreen> {
   final _searchController = TextEditingController();
-  List _meetings = [];
+  List<MeetingModel> _meetings = [];
   bool _loading = true;
-  String _search = '';
+  String _query = '';
 
   @override
   void initState() {
@@ -216,214 +229,312 @@ class _MyMoimScreenState extends State<MyMoimScreen> {
     try {
       final meetings = await SupabaseService.getMeetings();
       final myIds = await SupabaseService.getMyMeetingIds();
-      for (final m in meetings) {
-        m.isJoined = myIds.contains(m.id);
-      }
+      final joinedMeetings = meetings.where((meeting) {
+        final joined = myIds.contains(meeting.id);
+        meeting.isJoined = joined;
+        return joined;
+      }).toList()
+        ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+      if (!mounted) return;
       setState(() {
-        _meetings = meetings.where((m) => m.isJoined).toList();
+        _meetings = joinedMeetings;
         _loading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('채팅방 목록을 불러오지 못했어요: $e')),
+      );
     }
+  }
+
+  List<MeetingModel> get _filteredMeetings {
+    final query = _query.trim().toLowerCase();
+    if (query.isEmpty) return _meetings;
+    return _meetings.where((meeting) {
+      return meeting.title.toLowerCase().contains(query) ||
+          meeting.location.toLowerCase().contains(query) ||
+          meeting.tags.any((tag) => tag.toLowerCase().contains(query));
+    }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    final filtered = _search.isEmpty
-        ? _meetings
-        : _meetings.where((m) => m.title.contains(_search)).toList();
+    final meetings = _filteredMeetings;
 
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('내가 참여하는 모임'),
+        centerTitle: true,
+        title: const Text(
+          '모임 채팅방',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
           onPressed: () => Navigator.of(context).maybePop(),
         ),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(height: 1, color: const Color(0xFFDADADA)),
+        ),
       ),
       body: SafeArea(
         bottom: false,
-        child: Column(
-          children: [
-            // 검색바
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: Container(
-                height: 48,
-                decoration: BoxDecoration(
-                  color: AppColors.bgGray,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: (v) => setState(() => _search = v),
-                  decoration: InputDecoration(
-                    hintText: '모임 검색',
-                    hintStyle: const TextStyle(
-                        color: AppColors.textLight, fontSize: 14),
-                    suffixIcon: const Icon(Icons.search,
-                        color: AppColors.textLight, size: 22),
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 14),
+        child: RefreshIndicator(
+          color: AppColors.primary,
+          onRefresh: _load,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 22, 16, 24),
+            children: [
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 361),
+                  child: _SearchBox(
+                    controller: _searchController,
+                    onChanged: (value) => setState(() => _query = value),
                   ),
                 ),
               ),
-            ),
-            // 정렬
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              child: Row(
-                children: [
-                  GestureDetector(
-                    onTap: () {},
-                    child: Row(
+              const SizedBox(height: 30),
+              const _SortLabel(),
+              const SizedBox(height: 12),
+              if (_loading)
+                const Padding(
+                  padding: EdgeInsets.only(top: 120),
+                  child: Center(
+                    child: CircularProgressIndicator(color: AppColors.primary),
+                  ),
+                )
+              else if (meetings.isEmpty)
+                const _EmptyChatList()
+              else
+                Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 361),
+                    child: Column(
                       children: [
-                        const Text('최신순',
-                            style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.textPrimary)),
-                        const Icon(Icons.keyboard_arrow_down_rounded,
-                            size: 18, color: AppColors.textPrimary),
+                        for (final meeting in meetings)
+                          _ChatRoomTile(
+                            meeting: meeting,
+                            onOpen: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ChatScreen(meeting: meeting),
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                   ),
-                ],
-              ),
-            ),
-            // 목록
-            Expanded(
-              child: _loading
-                  ? const Center(
-                      child:
-                          CircularProgressIndicator(color: AppColors.primary))
-                  : RefreshIndicator(
-                      onRefresh: _load,
-                      color: AppColors.primary,
-                      child: filtered.isEmpty
-                          ? const Center(
-                              child: Text('참여한 모임이 없어요',
-                                  style: TextStyle(
-                                      color: AppColors.textSecondary)))
-                          : ListView.builder(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 16),
-                              itemCount: filtered.length,
-                              itemBuilder: (_, i) {
-                                final m = filtered[i];
-                                final isToday = DateTime.now()
-                                        .difference(m.meetingTime)
-                                        .inDays ==
-                                    0;
-                                return _MyMoimCard(
-                                    meeting: m, isToday: isToday);
-                              },
-                            ),
-                    ),
-            ),
-          ],
+                ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _MyMoimCard extends StatelessWidget {
-  final dynamic meeting;
-  final bool isToday;
-  const _MyMoimCard({required this.meeting, this.isToday = false});
+class _SearchBox extends StatelessWidget {
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+
+  const _SearchBox({
+    required this.controller,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-            builder: (_) => MeetingDetailScreen(meeting: meeting)),
-      ),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.divider),
+    return SizedBox(
+      height: 46,
+      child: TextField(
+        controller: controller,
+        onChanged: onChanged,
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          filled: true,
+          fillColor: const Color(0xFFF5F5F5),
+          hintText: '모임 채팅방 검색',
+          hintStyle: const TextStyle(fontSize: 13, color: Color(0xFFA1A1A1)),
+          suffixIcon: const Icon(
+            Icons.search_rounded,
+            color: Colors.black,
+            size: 30,
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFFDADADA)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: AppColors.primary),
+          ),
         ),
-        child: Row(
-          children: [
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: AppColors.bgGray,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Center(
-                  child: Text('🍽️', style: TextStyle(fontSize: 28))),
+      ),
+    );
+  }
+}
+
+class _SortLabel extends StatelessWidget {
+  const _SortLabel();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '최신순',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+        ),
+        SizedBox(width: 1),
+        Icon(Icons.keyboard_arrow_down_rounded, size: 23),
+      ],
+    );
+  }
+}
+
+class _ChatRoomTile extends StatelessWidget {
+  final MeetingModel meeting;
+  final VoidCallback onOpen;
+
+  const _ChatRoomTile({
+    required this.meeting,
+    required this.onOpen,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDelivery = meeting.type == MeetingType.delivery;
+
+    return Container(
+      height: 124,
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: Color(0xFFA1A1A1), width: 1)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 92,
+            height: 97,
+            decoration: BoxDecoration(
+              color: isDelivery
+                  ? const Color(0xFFFFF0EF)
+                  : const Color(0xFFEDEDED),
+              borderRadius: BorderRadius.circular(13),
             ),
-            const SizedBox(width: 12),
-            Expanded(
+            alignment: Alignment.center,
+            child: Text(
+              isDelivery ? '🛵' : '🍣',
+              style: const TextStyle(fontSize: 40),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 17, bottom: 18),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${meeting.location} | ${_formatDate(meeting.meetingTime)}',
-                    style: const TextStyle(
-                        fontSize: 11, color: AppColors.textSecondary),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    meeting.title,
-                    style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary),
+                    '${meeting.location.isEmpty ? '장소 미정' : meeting.location} | '
+                    '${_formatKoreanDate(meeting.meetingTime)} | '
+                    '${_formatKoreanTime(meeting.meetingTime)}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 11, color: Colors.black),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
+                  Text(
+                    meeting.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.black,
+                    ),
+                  ),
+                  const Spacer(),
                   Row(
                     children: [
-                      // 멤버 아이콘
-                      const Icon(Icons.people,
-                          size: 14, color: AppColors.matchHigh),
-                      const SizedBox(width: 4),
-                      Text(
-                        '나 포함 • 총 ${meeting.currentMembers}명',
-                        style: const TextStyle(
-                            fontSize: 11, color: AppColors.textSecondary),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        size: 30,
+                        color: Colors.black,
                       ),
-                      const Spacer(),
-                      if (isToday)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: AppColors.primary,
-                            borderRadius: BorderRadius.circular(20),
+                      const SizedBox(width: 7),
+                      SizedBox(
+                        width: 104,
+                        height: 35,
+                        child: ElevatedButton(
+                          onPressed: onOpen,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            padding: EdgeInsets.zero,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                           ),
-                          child: const Text('Today!',
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white)),
+                          child: const Text(
+                            '채팅방 가기',
+                            style: TextStyle(fontSize: 15),
+                          ),
                         ),
+                      ),
                     ],
                   ),
                 ],
               ),
             ),
-          ],
-        ),
-      ), // GestureDetector
+          ),
+        ],
+      ),
     );
   }
+}
 
-  String _formatDate(DateTime dt) {
-    final weekdays = ['월', '화', '수', '목', '금', '토', '일'];
-    return '${dt.month}월 ${dt.day}일(${weekdays[dt.weekday - 1]}) 오후 ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
+class _EmptyChatList extends StatelessWidget {
+  const _EmptyChatList();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.only(top: 120),
+      child: Column(
+        children: [
+          Icon(
+            Icons.chat_bubble_outline_rounded,
+            size: 46,
+            color: AppColors.textLight,
+          ),
+          SizedBox(height: 14),
+          Text(
+            '참여 중인 모임 채팅방이 없어요.',
+            style: TextStyle(fontSize: 15, color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+    );
   }
+}
+
+String _formatKoreanDate(DateTime date) {
+  const weekdays = ['월', '화', '수', '목', '금', '토', '일'];
+  return '${date.month}월 ${date.day}일(${weekdays[date.weekday - 1]})';
+}
+
+String _formatKoreanTime(DateTime date) {
+  final period = date.hour < 12 ? '오전' : '오후';
+  final hour =
+      date.hour > 12 ? date.hour - 12 : (date.hour == 0 ? 12 : date.hour);
+  final minute = date.minute.toString().padLeft(2, '0');
+  return '$period $hour:$minute';
 }

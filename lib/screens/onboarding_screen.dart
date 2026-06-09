@@ -31,7 +31,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   void _nextPage() {
     if (_currentPage < 2) {
-      _pageController.nextPage(duration: const Duration(milliseconds: 350), curve: Curves.easeInOut);
+      _pageController.nextPage(
+          duration: const Duration(milliseconds: 350), curve: Curves.easeInOut);
     } else {
       _finish();
     }
@@ -46,7 +47,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
       final user = UserModel(
         id: authUser.id, // Auth UUID 사용
-        name: _nameController.text.trim().isEmpty ? '밥메이트' : _nameController.text.trim(),
+        name: _nameController.text.trim().isEmpty
+            ? '밥구구'
+            : _nameController.text.trim(),
         tags: _selectedTags.toList(),
         age: _age,
       );
@@ -78,16 +81,20 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
               child: Row(
-                children: List.generate(3, (i) => Expanded(
-                  child: Container(
-                    height: 4,
-                    margin: const EdgeInsets.only(right: 4),
-                    decoration: BoxDecoration(
-                      color: i <= _currentPage ? AppColors.primary : AppColors.divider,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                )),
+                children: List.generate(
+                    3,
+                    (i) => Expanded(
+                          child: Container(
+                            height: 4,
+                            margin: const EdgeInsets.only(right: 4),
+                            decoration: BoxDecoration(
+                              color: i <= _currentPage
+                                  ? AppColors.primary
+                                  : AppColors.divider,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                        )),
               ),
             ),
             Expanded(
@@ -106,7 +113,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   _TagPage(
                     selectedTags: _selectedTags,
                     onToggle: (tag) => setState(() {
-                      _selectedTags.contains(tag) ? _selectedTags.remove(tag) : _selectedTags.add(tag);
+                      _selectedTags.contains(tag)
+                          ? _selectedTags.remove(tag)
+                          : _selectedTags.add(tag);
                     }),
                     onDone: _finish,
                     loading: _loading,
@@ -134,22 +143,37 @@ class _WelcomePage extends StatelessWidget {
         children: [
           const SizedBox(height: 40),
           Container(
-            width: 72, height: 72,
-            decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(20)),
-            child: const Center(child: Text('🍽️', style: TextStyle(fontSize: 36))),
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+                color: AppColors.primary,
+                borderRadius: BorderRadius.circular(20)),
+            child: const Center(
+                child: Text('🍽️', style: TextStyle(fontSize: 36))),
           ),
           const SizedBox(height: 32),
-          const Text('밥메이트', style: TextStyle(fontSize: 36, fontWeight: FontWeight.w900, color: AppColors.textPrimary, height: 1.1, letterSpacing: -1)),
+          const Text('밥구구',
+              style: TextStyle(
+                  fontSize: 36,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.textPrimary,
+                  height: 1.1,
+                  letterSpacing: -1)),
           const SizedBox(height: 12),
-          const Text('혼밥은 이제 그만.\n나와 잘 맞는 사람과 함께 먹어요.', style: TextStyle(fontSize: 17, color: AppColors.textSecondary, height: 1.6)),
+          const Text('혼밥은 이제 그만.\n나와 잘 맞는 사람과 함께 먹어요.',
+              style: TextStyle(
+                  fontSize: 17, color: AppColors.textSecondary, height: 1.6)),
           const Spacer(),
-          _Row(emoji: '🎯', text: '관심사 기반 밥메이트 매칭'),
+          const _Row(emoji: '🎯', text: '관심사 기반 밥구구 매칭'),
           const SizedBox(height: 16),
-          _Row(emoji: '🍜', text: '식당 모임 & 배달 소분 모임'),
+          const _Row(emoji: '🍜', text: '식당 모임 & 배달 소분 모임'),
           const SizedBox(height: 16),
-          _Row(emoji: '💬', text: '실시간 채팅 & 더치페이 계산'),
+          const _Row(emoji: '💬', text: '실시간 채팅 & 더치페이 계산'),
           const Spacer(),
-          SizedBox(width: double.infinity, child: ElevatedButton(onPressed: onNext, child: const Text('프로필 설정하기'))),
+          SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                  onPressed: onNext, child: const Text('프로필 설정하기'))),
           const SizedBox(height: 12),
         ],
       ),
@@ -163,10 +187,14 @@ class _Row extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Row(children: [
-    Text(emoji, style: const TextStyle(fontSize: 22)),
-    const SizedBox(width: 14),
-    Text(text, style: const TextStyle(fontSize: 15, color: AppColors.textPrimary, fontWeight: FontWeight.w500)),
-  ]);
+        Text(emoji, style: const TextStyle(fontSize: 22)),
+        const SizedBox(width: 14),
+        Text(text,
+            style: const TextStyle(
+                fontSize: 15,
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w500)),
+      ]);
 }
 
 class _ProfilePage extends StatelessWidget {
@@ -175,7 +203,11 @@ class _ProfilePage extends StatelessWidget {
   final ValueChanged<int> onAgeChanged;
   final VoidCallback onNext;
 
-  const _ProfilePage({required this.nameController, required this.age, required this.onAgeChanged, required this.onNext});
+  const _ProfilePage(
+      {required this.nameController,
+      required this.age,
+      required this.onAgeChanged,
+      required this.onNext});
 
   @override
   Widget build(BuildContext context) {
@@ -185,9 +217,19 @@ class _ProfilePage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 32),
-          const Text('기본 정보를\n알려주세요 👋', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: AppColors.textPrimary, height: 1.2, letterSpacing: -0.5)),
+          const Text('기본 정보를\n알려주세요 👋',
+              style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.textPrimary,
+                  height: 1.2,
+                  letterSpacing: -0.5)),
           const SizedBox(height: 36),
-          const Text('이름', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.textSecondary)),
+          const Text('이름',
+              style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                  color: AppColors.textSecondary)),
           const SizedBox(height: 8),
           TextField(
             controller: nameController,
@@ -195,19 +237,33 @@ class _ProfilePage extends StatelessWidget {
             decoration: const InputDecoration(hintText: '이름을 입력해주세요'),
           ),
           const SizedBox(height: 24),
-          Text('나이: $age세', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppColors.textSecondary)),
+          Text('나이: $age세',
+              style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                  color: AppColors.textSecondary)),
           const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.divider)),
+            decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.divider)),
             child: Slider(
-              value: age.toDouble(), min: 18, max: 40, divisions: 22,
-              activeColor: AppColors.primary, inactiveColor: AppColors.divider,
+              value: age.toDouble(),
+              min: 18,
+              max: 40,
+              divisions: 22,
+              activeColor: AppColors.primary,
+              inactiveColor: AppColors.divider,
               onChanged: (v) => onAgeChanged(v.round()),
             ),
           ),
           const Spacer(),
-          SizedBox(width: double.infinity, child: ElevatedButton(onPressed: onNext, child: const Text('다음'))),
+          SizedBox(
+              width: double.infinity,
+              child:
+                  ElevatedButton(onPressed: onNext, child: const Text('다음'))),
           const SizedBox(height: 12),
         ],
       ),
@@ -221,7 +277,11 @@ class _TagPage extends StatelessWidget {
   final VoidCallback onDone;
   final bool loading;
 
-  const _TagPage({required this.selectedTags, required this.onToggle, required this.onDone, required this.loading});
+  const _TagPage(
+      {required this.selectedTags,
+      required this.onToggle,
+      required this.onDone,
+      required this.loading});
 
   @override
   Widget build(BuildContext context) {
@@ -238,24 +298,47 @@ class _TagPage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 32),
-          const Text('나를 표현하는\n태그를 골라요 🏷️', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: AppColors.textPrimary, height: 1.2, letterSpacing: -0.5)),
+          const Text('나를 표현하는\n태그를 골라요 🏷️',
+              style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.textPrimary,
+                  height: 1.2,
+                  letterSpacing: -0.5)),
           const SizedBox(height: 6),
-          Text('${selectedTags.length}개 선택됨', style: const TextStyle(fontSize: 14, color: AppColors.primary, fontWeight: FontWeight.w600)),
+          Text('${selectedTags.length}개 선택됨',
+              style: const TextStyle(
+                  fontSize: 14,
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w600)),
           const SizedBox(height: 20),
           Expanded(
             child: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: categories.entries.map((e) => Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(e.key, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
-                    const SizedBox(height: 10),
-                    Wrap(spacing: 8, runSpacing: 8,
-                      children: e.value.map((tag) => TagChip(tag: tag, isSelected: selectedTags.contains(tag), onTap: () => onToggle(tag))).toList()),
-                    const SizedBox(height: 20),
-                  ],
-                )).toList(),
+                children: categories.entries
+                    .map((e) => Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(e.key,
+                                style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.textSecondary)),
+                            const SizedBox(height: 10),
+                            Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: e.value
+                                    .map((tag) => TagChip(
+                                        tag: tag,
+                                        isSelected: selectedTags.contains(tag),
+                                        onTap: () => onToggle(tag)))
+                                    .toList()),
+                            const SizedBox(height: 20),
+                          ],
+                        ))
+                    .toList(),
               ),
             ),
           ),
@@ -264,8 +347,12 @@ class _TagPage extends StatelessWidget {
             child: ElevatedButton(
               onPressed: (selectedTags.isNotEmpty && !loading) ? onDone : null,
               child: loading
-                  ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Text('밥메이트 시작하기 🍽️'),
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2))
+                  : const Text('밥구구 시작하기 🍽️'),
             ),
           ),
           const SizedBox(height: 12),

@@ -20,6 +20,9 @@ class SupabaseService {
       'university': user.university,
       'department': user.department,
       'student_id': user.studentId,
+      'school_email': user.schoolEmail,
+      'student_verified': user.studentVerified,
+      'student_verified_at': user.studentVerifiedAt?.toIso8601String(),
     });
   }
 
@@ -36,7 +39,70 @@ class SupabaseService {
       'department': user.department,
       'student_id': user.studentId,
     }).eq('id', user.id);
+
+    try {
+      await _client.from('users').update({
+        'gender': user.gender,
+      }).eq(
+        'id',
+        user.id,
+      );
+    } catch (e) {
+      debugPrint('[SupabaseService] 학생 인증 컬럼 미연결: $e');
+    }
     currentUser = user;
+  }
+
+  static Future<void> sendSchoolEmailOtp(String email) async {
+    if (userId == 'anonymous') throw Exception('로그인이 필요해요.');
+
+    final response = await _client.functions.invoke(
+      'send-school-verification',
+      body: {'email': email},
+    );
+    _throwFunctionError(response);
+  }
+
+  static Future<void> verifySchoolEmailOtp({
+    required String email,
+    required String token,
+  }) async {
+    if (userId == 'anonymous') throw Exception('로그인이 필요해요.');
+
+    final response = await _client.functions.invoke(
+      'verify-school-verification',
+      body: {
+        'email': email,
+        'code': token,
+      },
+    );
+    _throwFunctionError(response);
+
+    final user = currentUser;
+    if (user == null) return;
+    final data = response.data;
+    final verifiedAtText =
+        data is Map ? data['student_verified_at'] as String? : null;
+    final verifiedAt = verifiedAtText == null
+        ? DateTime.now()
+        : DateTime.parse(verifiedAtText).toLocal();
+    final updated = user.copyWith(
+      schoolEmail: email,
+      studentVerified: true,
+      studentVerifiedAt: verifiedAt,
+    );
+    currentUser = updated;
+  }
+
+  static void _throwFunctionError(FunctionResponse response) {
+    if (response.status >= 200 && response.status < 300) return;
+
+    final data = response.data;
+    if (data is Map && data['error'] != null) {
+      throw Exception(data['error']);
+    }
+    if (data is String && data.isNotEmpty) throw Exception(data);
+    throw Exception('요청을 처리하지 못했어요. 잠시 후 다시 시도해 주세요.');
   }
 
   // ─── 아바타 이미지 업로드 ───
@@ -81,10 +147,27 @@ class SupabaseService {
     final data = await _client
         .from('meetings')
         .select()
+        .gt('current_members', 0)
         .order('created_at', ascending: false);
     return (data as List).map((m) => MeetingModel.fromJson(m)).toList();
   }
 
+  static Future<MeetingModel?> getMeetingById(String meetingId) async {
+    try {
+      final data = await _client
+          .from('meetings')
+          .select()
+          .eq('id', meetingId)
+          .maybeSingle();
+      if (data == null) return null;
+      return MeetingModel.fromJson(data);
+    } catch (e) {
+      debugPrint('[SupabaseService] getMeetingById 오류: $e');
+      return null;
+    }
+  }
+
+  // ─── 모임 생성 ───
   static Future<Set<String>> getBlockedUserIds() async {
     if (userId == 'anonymous') return {};
     final data = await _client
@@ -127,7 +210,6 @@ class SupabaseService {
     return filterMeetingsForMatching(meetings);
   }
 
-  // ─── 모임 생성 ───
   static Future<MeetingModel?> createMeeting(MeetingModel meeting) async {
     final data = await _client
         .from('meetings')
@@ -170,14 +252,21 @@ class SupabaseService {
       'meeting_id': meetingId,
       'user_id': userId,
     });
-    final meeting = await _client
+
+    final memberRows = await _client
+        .from('meeting_members')
+        .select('user_id')
+        .eq('meeting_id', meetingId);
+    final memberCount = (memberRows as List).length;
+
+    if (memberCount == 0) {
+      await _client.from('meetings').delete().eq('id', meetingId);
+      return;
+    }
+
+    await _client
         .from('meetings')
-        .select('current_members')
-        .eq('id', meetingId)
-        .single();
-    final current = (meeting['current_members'] as int?) ?? 1;
-    await _client.from('meetings').update(
-        {'current_members': (current - 1).clamp(0, 999)}).eq('id', meetingId);
+        .update({'current_members': memberCount}).eq('id', meetingId);
   }
 
   // ─── 내가 참여한 모임 ID 목록 ───
@@ -190,23 +279,95 @@ class SupabaseService {
     return (data as List).map((m) => m['meeting_id'] as String).toSet();
   }
 
-  // ─── 모임 멤버 목록 불러오기 (프로필 포함) ───
-  static Future<List<Map<String, dynamic>>> getMeetingMembers(
-      String meetingId) async {
+  static Future<Set<String>> getSavedMeetingIds() async {
+    if (userId == 'anonymous') return {};
+    final data = await _client
+        .from('saved_meetings')
+        .select('meeting_id')
+        .eq('user_id', userId);
+    return (data as List).map((m) => m['meeting_id'] as String).toSet();
+  }
+
+  static Future<List<MeetingModel>> getSavedMeetings() async {
+    final savedIds = await getSavedMeetingIds();
+    if (savedIds.isEmpty) return [];
+
+    final data = await _client
+        .from('meetings')
+        .select()
+        .inFilter('id', savedIds.toList())
+        .order('created_at', ascending: false);
+    return (data as List).map((m) => MeetingModel.fromJson(m)).toList();
+  }
+
+  static Future<void> saveMeeting(String meetingId) async {
+    if (userId == 'anonymous') return;
+    await _client.from('saved_meetings').upsert({
+      'user_id': userId,
+      'meeting_id': meetingId,
+    });
+  }
+
+  static Future<void> unsaveMeeting(String meetingId) async {
+    if (userId == 'anonymous') return;
+    await _client.from('saved_meetings').delete().match({
+      'user_id': userId,
+      'meeting_id': meetingId,
+    });
+  }
+
+  static Future<TrustScore> getTrustScore(String reviewedUserId) async {
     try {
-      // meeting_members 테이블에서 user_id 가져오고 users 테이블 join
+      final data = await _client
+          .from('trust_reviews')
+          .select('score')
+          .eq('reviewed_user_id', reviewedUserId);
+      final scores = (data as List)
+          .map((row) => (row['score'] as num?)?.toDouble())
+          .whereType<double>()
+          .toList();
+      if (scores.isEmpty) return TrustScore.empty;
+      final total = scores.fold<double>(0, (sum, score) => sum + score);
+      return TrustScore(average: total / scores.length, count: scores.length);
+    } catch (e) {
+      debugPrint('[SupabaseService] getTrustScore 오류: $e');
+      return TrustScore.empty;
+    }
+  }
+
+  static Future<void> submitTrustReview({
+    required String meetingId,
+    required String reviewedUserId,
+    required double score,
+    String? comment,
+  }) async {
+    if (userId == 'anonymous' || reviewedUserId == userId) return;
+    final normalizedScore = score.clamp(0, 5).toDouble();
+    await _client.from('trust_reviews').upsert({
+      'meeting_id': meetingId,
+      'reviewer_id': userId,
+      'reviewed_user_id': reviewedUserId,
+      'score': normalizedScore,
+      'comment': comment,
+    }, onConflict: 'meeting_id,reviewer_id,reviewed_user_id');
+  }
+
+  // ─── 채팅 메시지 불러오기 ───
+  static Future<List<Map<String, dynamic>>> getMeetingMembers(
+    String meetingId,
+  ) async {
+    try {
       final data = await _client
           .from('meeting_members')
           .select('user_id, users(id, name, nickname, avatar_url)')
           .eq('meeting_id', meetingId);
       return List<Map<String, dynamic>>.from(data);
     } catch (e) {
-      debugPrint('[SupabaseService] getMeetingMembers 오류: \$e');
+      debugPrint('[SupabaseService] getMeetingMembers 오류: $e');
       return [];
     }
   }
 
-  // ─── 채팅 메시지 불러오기 ───
   static Future<List<ChatMessage>> getMessages(String meetingId) async {
     final data = await _client
         .from('messages')
@@ -256,107 +417,6 @@ class SupabaseService {
   }
 
   // ─── 일치도 계산 ───
-  static Future<String> createSettlement({
-    required String meetingId,
-    required int totalAmount,
-    required int perPersonAmount,
-    required String bankInfo,
-    required List<Map<String, dynamic>> members,
-    String? memo,
-  }) async {
-    final settlement = await _client
-        .from('settlements')
-        .insert({
-          'meeting_id': meetingId,
-          'requester_id': userId,
-          'total_amount': totalAmount,
-          'per_person_amount': perPersonAmount,
-          'bank_info': bankInfo,
-          'memo': memo,
-          'status': 'requested',
-        })
-        .select('id')
-        .single();
-
-    final settlementId = settlement['id'] as String;
-    if (members.isNotEmpty) {
-      await _client.from('settlement_members').insert(
-            members
-                .map(
-                  (member) => {
-                    'settlement_id': settlementId,
-                    'user_id': member['user_id'],
-                    'user_name': member['user_name'],
-                    'amount': member['amount'],
-                    'status': 'requested',
-                  },
-                )
-                .toList(),
-          );
-    }
-    return settlementId;
-  }
-
-  static Future<Map<String, dynamic>?> getSettlement(
-    String settlementId,
-  ) async {
-    return await _client
-        .from('settlements')
-        .select()
-        .eq('id', settlementId)
-        .maybeSingle();
-  }
-
-  static Future<List<Map<String, dynamic>>> getSettlementMembers(
-    String settlementId,
-  ) async {
-    final data = await _client
-        .from('settlement_members')
-        .select()
-        .eq('settlement_id', settlementId)
-        .order('created_at', ascending: true);
-    return List<Map<String, dynamic>>.from(data);
-  }
-
-  static Future<void> updateSettlementMemberStatus({
-    required String settlementId,
-    required String memberUserId,
-    required String status,
-  }) async {
-    final updates = <String, dynamic>{'status': status};
-    if (status == 'paid') {
-      updates['paid_at'] = DateTime.now().toIso8601String();
-    }
-    if (status == 'confirmed') {
-      updates['confirmed_at'] = DateTime.now().toIso8601String();
-    }
-
-    await _client
-        .from('settlement_members')
-        .update(updates)
-        .eq('settlement_id', settlementId)
-        .eq('user_id', memberUserId);
-  }
-
-  static Future<void> syncSettlementStatus(String settlementId) async {
-    final members = await getSettlementMembers(settlementId);
-    if (members.isEmpty) return;
-
-    final allConfirmed =
-        members.every((member) => member['status'] == 'confirmed');
-    final hasPaid = members.any(
-      (member) => member['status'] == 'paid' || member['status'] == 'confirmed',
-    );
-    final status =
-        allConfirmed ? 'completed' : (hasPaid ? 'in_progress' : null);
-    if (status == null) return;
-
-    await _client.from('settlements').update({
-      'status': status,
-      if (allConfirmed) 'completed_at': DateTime.now().toIso8601String(),
-    }).eq('id', settlementId);
-  }
-
   static int calcMatch(List<String> myTags, List<String> meetingTags) {
     if (myTags.isEmpty || meetingTags.isEmpty) return 0;
     final matches = myTags.where((t) => meetingTags.contains(t)).length;

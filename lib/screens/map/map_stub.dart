@@ -27,17 +27,14 @@ class _MapScreenState extends State<MapScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final meetings = await SupabaseService.getMeetingsExcludingBlocked();
+      final meetings = await SupabaseService.getMeetings();
       final myIds = await SupabaseService.getMyMeetingIds();
       final myTags = currentUser?.tags ?? [];
       for (final m in meetings) {
         m.isJoined = myIds.contains(m.id);
         m.matchPercent = SupabaseService.calcMatch(myTags, m.tags);
       }
-      setState(() {
-        _meetings = meetings;
-        _loading = false;
-      });
+      setState(() { _meetings = meetings; _loading = false; });
     } catch (e) {
       setState(() => _loading = false);
     }
@@ -56,13 +53,10 @@ class _MapScreenState extends State<MapScreen> {
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _load)
-        ],
+        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _load)],
       ),
       body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(color: AppColors.primary))
+          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
           : RefreshIndicator(
               onRefresh: _load,
               color: AppColors.primary,
@@ -81,21 +75,12 @@ class _MapScreenState extends State<MapScreen> {
                         padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
                         child: Row(
                           children: [
-                            const Text('📍 위치 설정된 모임',
-                                style: TextStyle(
-                                    fontSize: 16, fontWeight: FontWeight.w800)),
+                            const Text('📍 위치 설정된 모임', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
                             const SizedBox(width: 6),
                             Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                  color: AppColors.primary,
-                                  borderRadius: BorderRadius.circular(8)),
-                              child: Text('${withLocation.length}',
-                                  style: const TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w800,
-                                      color: Colors.white)),
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(8)),
+                              child: Text('${withLocation.length}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white)),
                             ),
                           ],
                         ),
@@ -108,12 +93,9 @@ class _MapScreenState extends State<MapScreen> {
                           child: MeetingCard(
                             meeting: withLocation[i],
                             onTap: () async {
-                              await Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => MeetingDetailScreen(
-                                        meeting: withLocation[i]),
-                                  ));
+                              await Navigator.push(context, MaterialPageRoute(
+                                builder: (_) => MeetingDetailScreen(meeting: withLocation[i]),
+                              ));
                               _load();
                             },
                           ),
@@ -123,19 +105,14 @@ class _MapScreenState extends State<MapScreen> {
                     ),
                   ],
                   if (withoutLocation.isNotEmpty) ...[
-                    SliverToBoxAdapter(
+                    const SliverToBoxAdapter(
                       child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
+                        padding: EdgeInsets.fromLTRB(16, 20, 16, 10),
                         child: Row(
                           children: [
-                            const Text('모든 모임',
-                                style: TextStyle(
-                                    fontSize: 16, fontWeight: FontWeight.w800)),
-                            const SizedBox(width: 6),
-                            const Text('위치 미설정 포함',
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: AppColors.textSecondary)),
+                            Text('모든 모임', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                            SizedBox(width: 6),
+                            Text('위치 미설정 포함', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                           ],
                         ),
                       ),
@@ -147,12 +124,9 @@ class _MapScreenState extends State<MapScreen> {
                           child: MeetingCard(
                             meeting: withoutLocation[i],
                             onTap: () async {
-                              await Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => MeetingDetailScreen(
-                                        meeting: withoutLocation[i]),
-                                  ));
+                              await Navigator.push(context, MaterialPageRoute(
+                                builder: (_) => MeetingDetailScreen(meeting: withoutLocation[i]),
+                              ));
                               _load();
                             },
                           ),
@@ -174,34 +148,28 @@ class _WebBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppColors.tagBg,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: AppColors.tagBg,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+    ),
+    child: const Row(
+      children: [
+        Text('🗺️', style: TextStyle(fontSize: 24)),
+        SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('지도 보기는 앱에서 이용해요', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary)),
+              Text('모임 만들 때 위치를 설정하면 지도에 표시돼요', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+            ],
+          ),
         ),
-        child: const Row(
-          children: [
-            Text('🗺️', style: TextStyle(fontSize: 24)),
-            SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('지도 보기는 앱에서 이용해요',
-                      style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.primary)),
-                  Text('모임 만들 때 위치를 설정하면 지도에 표시돼요',
-                      style: TextStyle(
-                          fontSize: 11, color: AppColors.textSecondary)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
+      ],
+    ),
+  );
 }
 
 // 웹용 LocationPickerScreen (텍스트 입력)
@@ -237,8 +205,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   void _confirm() {
     final text = _manualController.text.trim();
     if (text.isEmpty) return;
-    Navigator.pop(
-        context, LocationResult(latitude: 0, longitude: 0, address: text));
+    Navigator.pop(context, LocationResult(latitude: 0, longitude: 0, address: text));
   }
 
   @override
@@ -257,8 +224,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('위치 직접 입력',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+            const Text('위치 직접 입력', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
             const SizedBox(height: 10),
             Row(
               children: [
@@ -267,8 +233,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                     controller: _manualController,
                     decoration: const InputDecoration(
                       hintText: '예) 학교 앞 김밥천국',
-                      prefixIcon: Icon(Icons.place_outlined,
-                          size: 18, color: AppColors.textLight),
+                      prefixIcon: Icon(Icons.place_outlined, size: 18, color: AppColors.textLight),
                     ),
                     onSubmitted: (_) => _confirm(),
                   ),
@@ -278,44 +243,33 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
               ],
             ),
             const SizedBox(height: 24),
-            const Text('빠른 선택',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+            const Text('빠른 선택', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
             const SizedBox(height: 10),
             Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _quickLocations
-                  .map((loc) => GestureDetector(
-                        onTap: () => Navigator.pop(
-                            context,
-                            LocationResult(
-                              latitude: loc['lat'] as double,
-                              longitude: loc['lng'] as double,
-                              address: loc['name'] as String,
-                            )),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: AppColors.divider),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.place_outlined,
-                                  size: 14, color: AppColors.primary),
-                              const SizedBox(width: 4),
-                              Text(loc['name'] as String,
-                                  style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600)),
-                            ],
-                          ),
-                        ),
-                      ))
-                  .toList(),
+              spacing: 8, runSpacing: 8,
+              children: _quickLocations.map((loc) => GestureDetector(
+                onTap: () => Navigator.pop(context, LocationResult(
+                  latitude: loc['lat'] as double,
+                  longitude: loc['lng'] as double,
+                  address: loc['name'] as String,
+                )),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.divider),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.place_outlined, size: 14, color: AppColors.primary),
+                      const SizedBox(width: 4),
+                      Text(loc['name'] as String, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+              )).toList(),
             ),
           ],
         ),
@@ -328,6 +282,5 @@ class LocationResult {
   final double latitude;
   final double longitude;
   final String address;
-  const LocationResult(
-      {required this.latitude, required this.longitude, required this.address});
+  const LocationResult({required this.latitude, required this.longitude, required this.address});
 }

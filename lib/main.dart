@@ -11,15 +11,15 @@ import 'screens/main_screen.dart';
 import 'models/models.dart';
 import 'services/supabase_service.dart';
 
-import 'map_init_stub.dart'
-    if (dart.library.io) 'map_init_native.dart';
+import 'map_init_stub.dart' if (dart.library.io) 'map_init_native.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Supabase.initialize(
     url: 'https://uhclywphhbirymmejkyf.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVoY2x5d3BoaGJpcnltbWVqa3lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MjA1ODAsImV4cCI6MjA4OTE5NjU4MH0.yqwdqb8SyU_EYDnKQZ-mCza6lCo58F8sv9-Ph0JMRC8',
+    anonKey:
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVoY2x5d3BoaGJpcnltbWVqa3lmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2MjA1ODAsImV4cCI6MjA4OTE5NjU4MH0.yqwdqb8SyU_EYDnKQZ-mCza6lCo58F8sv9-Ph0JMRC8',
   );
 
   if (!kIsWeb) {
@@ -40,7 +40,7 @@ class MealMateApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '밥메이트',
+      title: '밥구구',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.theme,
       home: const _AuthGate(),
@@ -69,7 +69,12 @@ class _AuthGateState extends State<_AuthGate> {
 
       // ① passwordRecovery 이벤트 → 즉시 재설정 화면
       if (event == AuthChangeEvent.passwordRecovery) {
-        if (mounted) setState(() { _isPasswordReset = true; _loading = false; });
+        if (mounted) {
+          setState(() {
+            _isPasswordReset = true;
+            _loading = false;
+          });
+        }
         return;
       }
 
@@ -79,22 +84,42 @@ class _AuthGateState extends State<_AuthGate> {
       if (event == AuthChangeEvent.signedIn && session != null) {
         final isRecovery = _isRecoverySession(session);
         if (isRecovery) {
-          if (mounted) setState(() { _isPasswordReset = true; _loading = false; });
+          if (mounted) {
+            setState(() {
+              _isPasswordReset = true;
+              _loading = false;
+            });
+          }
           return;
         }
         await SupabaseService.loadCurrentUser(session.user.id);
-        if (mounted) setState(() { _isPasswordReset = false; _loading = false; });
+        if (mounted) {
+          setState(() {
+            _isPasswordReset = false;
+            _loading = false;
+          });
+        }
         return;
       }
 
       if (event == AuthChangeEvent.signedOut) {
         currentUser = null;
-        if (mounted) setState(() { _isPasswordReset = false; _loading = false; });
+        if (mounted) {
+          setState(() {
+            _isPasswordReset = false;
+            _loading = false;
+          });
+        }
       } else if (event == AuthChangeEvent.initialSession) {
         if (session != null) {
           // 앱 재시작 시 recovery 세션이면 바로 재설정 화면으로
           if (_isRecoverySession(session)) {
-            if (mounted) setState(() { _isPasswordReset = true; _loading = false; });
+            if (mounted) {
+              setState(() {
+                _isPasswordReset = true;
+                _loading = false;
+              });
+            }
             return;
           }
           bool loaded = false;

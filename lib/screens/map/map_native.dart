@@ -8,7 +8,6 @@ import 'package:http/http.dart' as http;
 import '../../models/models.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
-import '../../widgets/meeting_card.dart';
 import '../meeting_detail_screen.dart';
 
 class LocationResult {
@@ -42,7 +41,7 @@ Future<String> _getAddressFromLatLng(double lat, double lng) async {
       'x-ncp-apigw-api-key': 'JOdRUbGW1KbmNrLUQNDAVNc4Rkm4Loox9NtyYMqr',
     }).timeout(const Duration(seconds: 5));
 
-    debugPrint('Reverse Geocoding 응답: \${response.statusCode}');
+    debugPrint('Reverse Geocoding status: ${response.statusCode}');
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       final results = data['results'] as List?;
@@ -73,16 +72,56 @@ Future<String> _getAddressFromLatLng(double lat, double lng) async {
       }
     }
   } catch (e) {
-    debugPrint('Reverse Geocoding 예외: $e');
+    debugPrint('Failed to get current position: $e');
   }
-  return '\${lat.toStringAsFixed(5)}, \${lng.toStringAsFixed(5)}';
+  return '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}';
 }
 
-// ─── 위치 권한 요청 ───
+// ?? ?? ?? ? ?? ??
 Future<LocationPermission> _ensureLocationPermission(
-    BuildContext context) async {
-  var permission = await Geolocator.checkPermission();
+  BuildContext context,
+) async {
+  final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+  if (!serviceEnabled) {
+    if (!context.mounted) return LocationPermission.denied;
+    final openSettings = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          '\uC704\uCE58 \uC11C\uBE44\uC2A4\uAC00 \uAEBC\uC838 \uC788\uC5B4\uC694',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
+        content: const Text(
+          '\uAC00\uAE4C\uC6B4 \uBAA8\uC784\uC744 \uAC70\uB9AC\uC21C\uC73C\uB85C \uBCF4\uC5EC\uB4DC\uB9AC\uB824\uBA74 \uAE30\uAE30 \uC704\uCE58 \uC11C\uBE44\uC2A4\uB97C \uCF1C\uC57C \uD574\uC694.',
+          style: TextStyle(fontSize: 14, height: 1.6),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('\uB098\uC911\uC5D0',
+                style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: const Text('\uC124\uC815 \uC5F4\uAE30'),
+          ),
+        ],
+      ),
+    );
+    if (openSettings == true) {
+      await Geolocator.openLocationSettings();
+    }
+    return LocationPermission.denied;
+  }
 
+  var permission = await Geolocator.checkPermission();
   if (permission == LocationPermission.denied) {
     if (!context.mounted) return permission;
     final proceed = await showDialog<bool>(
@@ -90,28 +129,29 @@ Future<LocationPermission> _ensureLocationPermission(
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(children: [
-          Text('📍', style: TextStyle(fontSize: 24)),
-          SizedBox(width: 8),
-          Text('위치 권한 필요',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-        ]),
+        title: const Row(
+          children: [
+            Icon(Icons.location_on_rounded, color: AppColors.primary),
+            SizedBox(width: 8),
+            Text(
+              '\uC704\uCE58 \uAD8C\uD55C \uD544\uC694',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            ),
+          ],
+        ),
         content: const Text(
-          '주변 모임을 찾으려면 위치 접근 권한이 필요해요.\n\n위치 정보는 주변 모임 탐색에만 사용되며 서버에 저장되지 않아요.',
+          '\uC8FC\uBCC0 \uBAA8\uC784\uC744 \uCC3E\uC73C\uB824\uBA74 \uC704\uCE58 \uC811\uADFC \uAD8C\uD55C\uC774 \uD544\uC694\uD574\uC694.\n\n\uC704\uCE58 \uC815\uBCF4\uB294 \uC8FC\uBCC0 \uBAA8\uC784 \uD0D0\uC0C9\uC5D0\uB9CC \uC0AC\uC6A9\uD560\uAC8C\uC694.',
           style: TextStyle(fontSize: 14, height: 1.6),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('나중에', style: TextStyle(color: Colors.grey)),
+            child: const Text('\uB098\uC911\uC5D0',
+                style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
-            ),
-            child: const Text('허용하기'),
+            child: const Text('\uD5C8\uC6A9'),
           ),
         ],
       ),
@@ -126,16 +166,19 @@ Future<LocationPermission> _ensureLocationPermission(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('위치 권한이 차단됨',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+        title: const Text(
+          '\uC704\uCE58 \uAD8C\uD55C\uC774 \uCC28\uB2E8\uB410\uC5B4\uC694',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
         content: const Text(
-          '위치 권한이 영구 차단되어 있어요.\n설정에서 위치 권한을 허용해주세요.',
+          '\uC704\uCE58 \uAD8C\uD55C\uC774 \uC601\uAD6C \uCC28\uB2E8\uB418\uC5B4 \uC788\uC5B4\uC694. \uC124\uC815\uC5D0\uC11C \uC704\uCE58 \uAD8C\uD55C\uC744 \uD5C8\uC6A9\uD574 \uC8FC\uC138\uC694.',
           style: TextStyle(fontSize: 14, height: 1.6),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('닫기', style: TextStyle(color: Colors.grey)),
+            child: const Text('\uB098\uC911\uC5D0',
+                style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
             onPressed: () {
@@ -144,9 +187,10 @@ Future<LocationPermission> _ensureLocationPermission(
             },
             style: ElevatedButton.styleFrom(
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
-            child: const Text('설정으로 이동'),
+            child: const Text('\uC124\uC815\uC73C\uB85C \uC774\uB3D9'),
           ),
         ],
       ),
@@ -167,14 +211,13 @@ Future<Position?> _getCurrentPosition(BuildContext context) async {
       timeLimit: const Duration(seconds: 10),
     );
   } catch (e) {
-    debugPrint('위치 가져오기 실패: $e');
+    debugPrint('Failed to get current position: $e');
     return null;
   }
 }
 
-// ═══════════════════════════════════════════
-// ─── 위치 선택 화면 ───
-// ═══════════════════════════════════════════
+// ?꾩튂 ?좏깮 ?붾㈃
+// ?? ?? ??
 class LocationPickerScreen extends StatefulWidget {
   const LocationPickerScreen({super.key});
 
@@ -195,29 +238,34 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     if (!mounted) return;
     final pos = await _getCurrentPosition(context);
     if (pos != null && _mapController != null && mounted) {
-      await _mapController!.updateCamera(NCameraUpdate.scrollAndZoomTo(
-        target: NLatLng(pos.latitude, pos.longitude),
-        zoom: 16,
-      ));
+      await _mapController!.updateCamera(
+        NCameraUpdate.scrollAndZoomTo(
+          target: NLatLng(pos.latitude, pos.longitude),
+          zoom: 16,
+        ),
+      );
     }
   }
 
   void _onMapTap(NPoint point, NLatLng location) async {
     setState(() {
       _selectedLocation = location;
-      _selectedAddress = '주소 불러오는 중...';
+      _selectedAddress =
+          '\uC8FC\uC18C\uB97C \uBD88\uB7EC\uC624\uB294 \uC911...';
       _addressLoading = true;
     });
     await _mapController?.clearOverlays();
-    await _mapController
-        ?.addOverlay(NMarker(id: 'selected', position: location));
+    await _mapController?.addOverlay(
+      NMarker(id: 'selected', position: location),
+    );
     final address =
         await _getAddressFromLatLng(location.latitude, location.longitude);
-    if (mounted)
+    if (mounted) {
       setState(() {
         _selectedAddress = address;
         _addressLoading = false;
       });
+    }
   }
 
   @override
@@ -225,7 +273,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: AppBar(
-        title: const Text('위치 선택'),
+        title: const Text('\uC704\uCE58 \uC120\uD0DD'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
           onPressed: () => Navigator.pop(context),
@@ -234,17 +282,21 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
           if (_selectedLocation != null && !_addressLoading)
             TextButton(
               onPressed: () => Navigator.pop(
-                  context,
-                  LocationResult(
-                    latitude: _selectedLocation!.latitude,
-                    longitude: _selectedLocation!.longitude,
-                    address: _selectedAddress,
-                  )),
-              child: const Text('확인',
-                  style: TextStyle(
-                      color: AppColors.primary,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 15)),
+                context,
+                LocationResult(
+                  latitude: _selectedLocation!.latitude,
+                  longitude: _selectedLocation!.longitude,
+                  address: _selectedAddress,
+                ),
+              ),
+              child: const Text(
+                '\uC120\uD0DD',
+                style: TextStyle(
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                ),
+              ),
             ),
         ],
       ),
@@ -277,18 +329,30 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.08),
-                        blurRadius: 8)
+                      color: Colors.black.withValues(alpha: 0.08),
+                      blurRadius: 8,
+                    ),
                   ],
                 ),
                 child: const Row(
                   children: [
-                    Icon(Icons.touch_app_outlined,
-                        color: AppColors.primary, size: 20),
+                    Icon(
+                      Icons.touch_app_outlined,
+                      color: AppColors.primary,
+                      size: 20,
+                    ),
                     SizedBox(width: 8),
-                    Text('지도를 탭해서 위치를 선택하세요',
+                    Expanded(
+                      child: Text(
+                        '\uC9C0\uB3C4\uB97C \uB20C\uB7EC \uC704\uCE58\uB97C \uC120\uD0DD\uD558\uC138\uC694',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.w600)),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -309,13 +373,15 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Center(
-                        child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
                           color: Colors.grey[300],
-                          borderRadius: BorderRadius.circular(2)),
-                    )),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
                     const SizedBox(height: 16),
                     Row(
                       children: [
@@ -323,8 +389,9 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                           width: 40,
                           height: 40,
                           decoration: BoxDecoration(
-                              color: AppColors.tagBg,
-                              borderRadius: BorderRadius.circular(10)),
+                            color: AppColors.tagBg,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                           child:
                               const Icon(Icons.place, color: AppColors.primary),
                         ),
@@ -333,28 +400,43 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text('선택한 위치',
-                                  style: TextStyle(
-                                      fontSize: 12,
-                                      color: AppColors.textSecondary)),
+                              const Text(
+                                '\uC120\uD0DD\uD55C \uC704\uCE58',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
                               _addressLoading
-                                  ? const Row(children: [
-                                      SizedBox(
+                                  ? const Row(
+                                      children: [
+                                        SizedBox(
                                           width: 14,
                                           height: 14,
                                           child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: AppColors.primary)),
-                                      SizedBox(width: 8),
-                                      Text('주소 불러오는 중...',
+                                            strokeWidth: 2,
+                                            color: AppColors.primary,
+                                          ),
+                                        ),
+                                        SizedBox(width: 8),
+                                        Text(
+                                          '\uC8FC\uC18C\uB97C \uBD88\uB7EC\uC624\uB294 \uC911...',
                                           style: TextStyle(
-                                              fontSize: 13,
-                                              color: AppColors.textSecondary)),
-                                    ])
-                                  : Text(_selectedAddress,
+                                            fontSize: 13,
+                                            color: AppColors.textSecondary,
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  : Text(
+                                      _selectedAddress,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w700)),
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
                             ],
                           ),
                         ),
@@ -367,13 +449,15 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                         onPressed: _addressLoading
                             ? null
                             : () => Navigator.pop(
-                                context,
-                                LocationResult(
-                                  latitude: _selectedLocation!.latitude,
-                                  longitude: _selectedLocation!.longitude,
-                                  address: _selectedAddress,
-                                )),
-                        child: const Text('이 위치로 설정'),
+                                  context,
+                                  LocationResult(
+                                    latitude: _selectedLocation!.latitude,
+                                    longitude: _selectedLocation!.longitude,
+                                    address: _selectedAddress,
+                                  ),
+                                ),
+                        child: const Text(
+                            '\uC774 \uC704\uCE58\uB85C \uC124\uC815'),
                       ),
                     ),
                   ],
@@ -382,16 +466,15 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
             ),
           if (_mapLoading)
             const Center(
-                child: CircularProgressIndicator(color: AppColors.primary)),
+              child: CircularProgressIndicator(color: AppColors.primary),
+            ),
         ],
       ),
     );
   }
 }
 
-// ═══════════════════════════════════════════
-// ─── 지도 탐색 화면 ───
-// ═══════════════════════════════════════════
+// ?? ?? ??
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
 
@@ -401,12 +484,11 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
   NaverMapController? _mapController;
-  List<MeetingModel> _meetings = [];
   List<_MeetingWithDistance> _nearbyMeetings = [];
   MeetingModel? _selectedMeeting;
   Position? _currentPosition;
   bool _loading = true;
-  double _radiusKm = 3.0;
+  final double _radiusKm = 3.0;
 
   static const _defaultLocation = NLatLng(37.5665, 126.9780);
 
@@ -456,7 +538,6 @@ class _MapScreenState extends State<MapScreen> {
 
     setState(() {
       _currentPosition = pos;
-      _meetings = withLocation;
       _nearbyMeetings = withDist
           .where((m) => m.distanceKm < 0 || m.distanceKm <= _radiusKm)
           .toList();
@@ -508,245 +589,479 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  void _onRadiusChanged(double km) {
-    setState(() {
-      _radiusKm = km;
-      if (_currentPosition != null) {
-        _nearbyMeetings = _meetings
-            .map((m) {
-              final dist = _calcDistance(_currentPosition!.latitude,
-                  _currentPosition!.longitude, m.latitude!, m.longitude!);
-              return _MeetingWithDistance(meeting: m, distanceKm: dist);
-            })
-            .where((m) => m.distanceKm <= _radiusKm)
-            .toList()
-          ..sort((a, b) => a.distanceKm.compareTo(b.distanceKm));
-      }
-    });
-    _addMarkers();
+  Future<void> _openDetail(MeetingModel meeting) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => MeetingDetailScreen(meeting: meeting)),
+    );
+    _loadAll();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bg,
-      appBar: AppBar(
-        title: const Text('주변 모임 지도'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-          onPressed: () => Navigator.pop(context),
-        ),
-        actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadAll)
-        ],
-      ),
-      body: Column(
+      backgroundColor: Colors.white,
+      body: Stack(
         children: [
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-            child: Row(
-              children: [
-                const Icon(Icons.radar, size: 16, color: AppColors.primary),
-                const SizedBox(width: 6),
-                Text('반경 ${_radiusKm.toStringAsFixed(1)}km',
-                    style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.primary)),
-                Expanded(
-                  child: Slider(
-                    value: _radiusKm,
-                    min: 1,
-                    max: 20,
-                    divisions: 19,
-                    activeColor: AppColors.primary,
-                    inactiveColor: AppColors.divider,
-                    onChanged: _onRadiusChanged,
-                  ),
+          Positioned.fill(
+            top: 130,
+            child: NaverMap(
+              options: NaverMapViewOptions(
+                initialCameraPosition: NCameraPosition(
+                  target: _currentPosition != null
+                      ? NLatLng(
+                          _currentPosition!.latitude,
+                          _currentPosition!.longitude,
+                        )
+                      : _defaultLocation,
+                  zoom: 13,
                 ),
-                Text('${_nearbyMeetings.length}개',
-                    style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textSecondary)),
-              ],
+                mapType: NMapType.basic,
+                locationButtonEnable: true,
+              ),
+              onMapReady: (controller) async {
+                _mapController = controller;
+                if (_currentPosition != null) {
+                  await controller.updateCamera(
+                    NCameraUpdate.scrollAndZoomTo(
+                      target: NLatLng(
+                        _currentPosition!.latitude,
+                        _currentPosition!.longitude,
+                      ),
+                      zoom: 14,
+                    ),
+                  );
+                }
+                await _addMarkers();
+              },
+              onMapTapped: (_, __) => setState(() => _selectedMeeting = null),
             ),
           ),
-          Expanded(
-            child: Stack(
+          SafeArea(
+            bottom: false,
+            child: Column(
               children: [
-                NaverMap(
-                  options: NaverMapViewOptions(
-                    initialCameraPosition: NCameraPosition(
-                      target: _currentPosition != null
-                          ? NLatLng(_currentPosition!.latitude,
-                              _currentPosition!.longitude)
-                          : _defaultLocation,
-                      zoom: 13,
-                    ),
-                    mapType: NMapType.basic,
-                    locationButtonEnable: true,
-                  ),
-                  onMapReady: (controller) async {
-                    _mapController = controller;
-                    if (_currentPosition != null) {
-                      await controller
-                          .updateCamera(NCameraUpdate.scrollAndZoomTo(
-                        target: NLatLng(_currentPosition!.latitude,
-                            _currentPosition!.longitude),
-                        zoom: 14,
-                      ));
-                    }
-                    await _addMarkers();
-                  },
-                  onMapTapped: (_, __) =>
-                      setState(() => _selectedMeeting = null),
-                ),
-                if (!_loading)
-                  Positioned(
-                    top: 12,
-                    left: 12,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 7),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.1),
-                              blurRadius: 8)
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.place,
-                              color: AppColors.primary, size: 14),
-                          const SizedBox(width: 4),
-                          Text('${_nearbyMeetings.length}개 모임',
-                              style: const TextStyle(
-                                  fontSize: 12, fontWeight: FontWeight.w700)),
-                        ],
-                      ),
-                    ),
-                  ),
-                if (!_loading && _currentPosition == null)
-                  Positioned(
-                    top: 12,
-                    right: 12,
-                    child: GestureDetector(
-                      onTap: () async {
-                        final perm = await _ensureLocationPermission(context);
-                        if (perm == LocationPermission.always ||
-                            perm == LocationPermission.whileInUse) {
-                          _loadAll();
-                        }
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.withValues(alpha: 0.9),
-                          borderRadius: BorderRadius.circular(10),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 28, 20, 0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => Navigator.pop(context),
+                          behavior: HitTestBehavior.opaque,
+                          child: const Text(
+                            '리스트로 보기',
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF909090),
+                            ),
+                          ),
                         ),
-                        child: const Row(
+                      ),
+                      Expanded(
+                        child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.location_off,
-                                size: 14, color: Colors.white),
-                            SizedBox(width: 4),
-                            Text('위치 권한 필요',
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w700)),
+                            const Text(
+                              '지도로 보기',
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Container(
+                                width: 92, height: 3, color: Colors.black),
                           ],
                         ),
                       ),
-                    ),
+                    ],
                   ),
-                if (_selectedMeeting != null)
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: Container(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                      decoration: const BoxDecoration(
-                        color: AppColors.bg,
-                        borderRadius:
-                            BorderRadius.vertical(top: Radius.circular(20)),
-                        boxShadow: [
-                          BoxShadow(color: Colors.black12, blurRadius: 10)
-                        ],
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Center(
-                              child: Container(
-                            width: 40,
-                            height: 4,
-                            margin: const EdgeInsets.only(bottom: 8),
-                            decoration: BoxDecoration(
-                                color: Colors.grey[300],
-                                borderRadius: BorderRadius.circular(2)),
-                          )),
-                          if (_currentPosition != null) ...[
-                            Builder(builder: (_) {
-                              final dist = _calcDistance(
-                                _currentPosition!.latitude,
-                                _currentPosition!.longitude,
-                                _selectedMeeting!.latitude!,
-                                _selectedMeeting!.longitude!,
-                              );
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: Row(
-                                  children: [
-                                    const Icon(Icons.directions_walk,
-                                        size: 14, color: AppColors.primary),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      dist < 1
-                                          ? '${(dist * 1000).round()}m 거리'
-                                          : '${dist.toStringAsFixed(1)}km 거리',
-                                      style: const TextStyle(
-                                          fontSize: 12,
-                                          color: AppColors.primary,
-                                          fontWeight: FontWeight.w700),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }),
-                          ],
-                          MeetingCard(
-                            meeting: _selectedMeeting!,
-                            onTap: () async {
-                              await Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => MeetingDetailScreen(
-                                        meeting: _selectedMeeting!),
-                                  ));
-                              _loadAll();
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                if (_loading)
-                  const Center(
-                      child:
-                          CircularProgressIndicator(color: AppColors.primary)),
+                ),
+                const SizedBox(height: 24),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: _MapSearchBox(onRefresh: _loadAll),
+                ),
               ],
             ),
           ),
+          if (!_loading && _currentPosition == null)
+            Positioned(
+              top: 205,
+              right: 24,
+              child: GestureDetector(
+                onTap: () async {
+                  final perm = await _ensureLocationPermission(context);
+                  if (perm == LocationPermission.always ||
+                      perm == LocationPermission.whileInUse) {
+                    _loadAll();
+                  }
+                },
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.9),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.location_off, size: 14, color: Colors.white),
+                      SizedBox(width: 4),
+                      Text(
+                        '위치 권한 필요',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          DraggableScrollableSheet(
+            initialChildSize: 0.38,
+            minChildSize: 0.10,
+            maxChildSize: 0.86,
+            snap: true,
+            snapSizes: const [0.10, 0.38, 0.86],
+            builder: (context, scrollController) {
+              return Container(
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                  border: Border(
+                    top: BorderSide(color: Color(0xFFDADADA), width: 1.05),
+                  ),
+                ),
+                child: SingleChildScrollView(
+                  controller: scrollController,
+                  physics: const ClampingScrollPhysics(),
+                  child: SizedBox(
+                    height: MediaQuery.sizeOf(context).height * 0.86,
+                    child: Column(
+                      children: [
+                        const SizedBox(height: 12),
+                        Container(
+                          width: 45,
+                          height: 3,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFBDBDBD),
+                            borderRadius: BorderRadius.circular(99),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 12, 20, 9),
+                          child: Row(
+                            children: [
+                              const Text(
+                                '가까운 순',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              const Icon(Icons.keyboard_arrow_down_rounded,
+                                  size: 17),
+                              const Spacer(),
+                              Text(
+                                '${_nearbyMeetings.length}\uAC1C',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const _MapFilterChips(),
+                        const SizedBox(height: 10),
+                        Expanded(
+                          child: _loading
+                              ? const Center(
+                                  child: CircularProgressIndicator(
+                                    color: AppColors.primary,
+                                  ),
+                                )
+                              : ListView.separated(
+                                  primary: false,
+                                  padding:
+                                      const EdgeInsets.fromLTRB(20, 0, 20, 96),
+                                  itemCount: _nearbyMeetings.length,
+                                  separatorBuilder: (_, __) => const Divider(
+                                    height: 25,
+                                    color: Color(0xFFE0E0E0),
+                                  ),
+                                  itemBuilder: (context, index) {
+                                    final item = _nearbyMeetings[index];
+                                    return _MapMeetingRow(
+                                      item: item,
+                                      selected: _selectedMeeting?.id ==
+                                          item.meeting.id,
+                                      onTap: () => _openDetail(item.meeting),
+                                    );
+                                  },
+                                ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          if (_loading)
+            const Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
+            ),
         ],
+      ),
+    );
+  }
+}
+
+class _MapSearchBox extends StatelessWidget {
+  final VoidCallback onRefresh;
+
+  const _MapSearchBox({required this.onRefresh});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 46,
+      padding: const EdgeInsets.only(left: 16, right: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFD9D9D9), width: 1.2),
+      ),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Text(
+              '모임, 장소 검색',
+              style: TextStyle(fontSize: 13, color: Color(0xFF909090)),
+            ),
+          ),
+          IconButton(
+            onPressed: onRefresh,
+            icon: const Icon(Icons.search_rounded, size: 29),
+            tooltip: '검색',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MapFilterChips extends StatelessWidget {
+  const _MapFilterChips();
+
+  @override
+  Widget build(BuildContext context) {
+    const chips = [
+      ('전체 장소', Icons.explore_rounded, true),
+      ('1인 식당', Icons.person_rounded, false),
+      ('진행 중 모임', Icons.groups_rounded, false)
+    ];
+
+    return SizedBox(
+      height: 23,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        itemCount: chips.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 7),
+        itemBuilder: (context, index) {
+          final chip = chips[index];
+          final active = chip.$3;
+          return Container(
+            width: 68,
+            height: 23,
+            padding: const EdgeInsets.symmetric(horizontal: 5),
+            decoration: BoxDecoration(
+              color: active ? const Color(0xFF444EF8) : const Color(0xFFDDE5F3),
+              borderRadius: BorderRadius.circular(19),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  chip.$2,
+                  size: index == 0 ? 14 : 12,
+                  color: active ? Colors.white : const Color(0xFF444EF8),
+                ),
+                const SizedBox(width: 3),
+                Flexible(
+                  child: Text(
+                    chip.$1,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: active ? FontWeight.w600 : FontWeight.w800,
+                      color: active ? Colors.white : const Color(0xFF444EF8),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _MapMeetingRow extends StatelessWidget {
+  final _MeetingWithDistance item;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _MapMeetingRow({
+    required this.item,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final meeting = item.meeting;
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        color: selected ? AppColors.primaryBg : Colors.transparent,
+        child: SizedBox(
+          height: 128,
+          child: Row(
+            children: [
+              Container(
+                width: 105,
+                height: 128,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFECE5),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  _mapMeetingIcon(meeting),
+                  size: 42,
+                  color: AppColors.primary,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            meeting.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(
+                          Icons.chevron_right_rounded,
+                          size: 24,
+                          color: Colors.black,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      _mapTagLine(meeting.tags),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFF909090),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        const Icon(Icons.location_on_outlined, size: 16),
+                        const SizedBox(width: 2),
+                        Expanded(
+                          child: Text(
+                            meeting.location.isEmpty
+                                ? '장소 미정'
+                                : meeting.location,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 7),
+                    Row(
+                      children: [
+                        const Icon(Icons.calendar_month_outlined, size: 16),
+                        const SizedBox(width: 2),
+                        Text(
+                          _mapShortDate(meeting.meetingTime),
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                        const SizedBox(width: 17),
+                        const Icon(Icons.person_outline_rounded, size: 16),
+                        const SizedBox(width: 2),
+                        Text(
+                          '${meeting.currentMembers} / ${meeting.maxMembers}\uBA85',
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                        const Spacer(),
+                        const Icon(Icons.auto_awesome, size: 14),
+                        const SizedBox(width: 2),
+                        Text(
+                          '찰떡궁합 ${meeting.matchPercent}%',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (item.distanceKm >= 0) ...[
+                      const SizedBox(height: 5),
+                      Text(
+                        item.distanceKm < 1
+                            ? '${(item.distanceKm * 1000).round()}m 거리'
+                            : '${item.distanceKm.toStringAsFixed(1)}km 거리',
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -756,4 +1071,41 @@ class _MeetingWithDistance {
   final MeetingModel meeting;
   final double distanceKm;
   const _MeetingWithDistance({required this.meeting, required this.distanceKm});
+}
+
+IconData _mapMeetingIcon(MeetingModel meeting) {
+  final text =
+      '${meeting.title} ${meeting.category ?? ''} ${meeting.tags.join(' ')}';
+  if (text.contains('\uCD08\uBC25') || text.contains('\uC77C\uC2DD')) {
+    return Icons.set_meal_rounded;
+  }
+  if (text.contains('\uB9C8\uB77C') || text.contains('\uC911\uC2DD')) {
+    return Icons.ramen_dining_rounded;
+  }
+  if (text.contains('\uD30C\uC2A4\uD0C0') || text.contains('\uC591\uC2DD')) {
+    return Icons.local_pizza_rounded;
+  }
+  if (text.contains('\uAC10\uC790\uD0D5') || text.contains('\uCC0C\uAC1C')) {
+    return Icons.soup_kitchen_rounded;
+  }
+  if (text.contains('\uD584\uBC84\uAC70') ||
+      text.contains('\uC0CC\uB4DC\uC704\uCE58')) {
+    return Icons.lunch_dining_rounded;
+  }
+  return meeting.type == MeetingType.delivery
+      ? Icons.delivery_dining_rounded
+      : Icons.restaurant_rounded;
+}
+
+String _mapTagLine(List<String> tags) {
+  if (tags.isEmpty) return '#밥구구';
+  return tags
+      .take(3)
+      .map((tag) => tag.startsWith('#') ? tag : '#$tag')
+      .join(' ');
+}
+
+String _mapShortDate(DateTime date) {
+  final local = date.toLocal();
+  return '${local.month}/${local.day}';
 }
