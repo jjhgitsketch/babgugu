@@ -121,6 +121,19 @@ class SupabaseService {
   }
 
   // ─── 유저 프로필 로드 (앱 시작 시) ───
+  static Future<UserModel?> getUserById(String userId) async {
+    if (userId.isEmpty) return null;
+    try {
+      final data =
+          await _client.from('users').select().eq('id', userId).maybeSingle();
+      if (data == null) return null;
+      return UserModel.fromJson(data);
+    } catch (e) {
+      debugPrint('[SupabaseService] getUserById 오류: $e');
+      return null;
+    }
+  }
+
   static Future<bool> loadCurrentUser(String userId) async {
     try {
       final data =
@@ -207,7 +220,10 @@ class SupabaseService {
 
   static Future<List<MeetingModel>> getMeetingsExcludingBlocked() async {
     final meetings = await getMeetings();
-    return filterMeetingsForMatching(meetings);
+    final openMeetings = meetings
+        .where((meeting) => meeting.status == MeetingStatus.open)
+        .toList();
+    return filterMeetingsForMatching(openMeetings);
   }
 
   static Future<MeetingModel?> createMeeting(MeetingModel meeting) async {
@@ -219,8 +235,56 @@ class SupabaseService {
     return MeetingModel.fromJson(data);
   }
 
+  static Future<void> updateMeetingStatus({
+    required String meetingId,
+    required MeetingStatus status,
+  }) async {
+    final meeting = await getMeetingById(meetingId);
+    if (meeting == null) throw Exception('모임을 찾을 수 없어요.');
+    if (meeting.hostId != userId) {
+      throw Exception('모임장만 모임 상태를 변경할 수 있어요.');
+    }
+    await _client.from('meetings').update({'status': status.dbValue}).eq(
+      'id',
+      meetingId,
+    );
+  }
+
+  static Future<void> startMeeting(String meetingId) => updateMeetingStatus(
+        meetingId: meetingId,
+        status: MeetingStatus.started,
+      );
+
+  static Future<void> completeMeeting(String meetingId) => updateMeetingStatus(
+        meetingId: meetingId,
+        status: MeetingStatus.completed,
+      );
   // ─── 모임 참여 ───
   static Future<void> joinMeeting(String meetingId) async {
+    final meeting = await _client
+        .from('meetings')
+        .select('status, current_members, max_members')
+        .eq('id', meetingId)
+        .single();
+    final status = MeetingStatusX.fromDb(meeting['status'] as String?);
+    if (status != MeetingStatus.open) {
+      throw Exception('이미 시작되었거나 완료된 모임에는 참여할 수 없어요.');
+    }
+
+    final current = (meeting['current_members'] as int?) ?? 0;
+    final max = (meeting['max_members'] as int?) ?? 0;
+    if (max > 0 && current >= max) {
+      throw Exception('모집이 완료된 모임이에요.');
+    }
+
+    final existing = await _client
+        .from('meeting_members')
+        .select('meeting_id')
+        .eq('meeting_id', meetingId)
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (existing != null) return;
+
     final blockedUserIds = await getBlockedUserIds();
     if (blockedUserIds.isNotEmpty) {
       final members = await getMeetingMembers(meetingId);
@@ -231,19 +295,21 @@ class SupabaseService {
       }
     }
 
-    await _client.from('meeting_members').upsert({
+    await _client.from('meeting_members').insert({
       'meeting_id': meetingId,
       'user_id': userId,
     });
-    final meeting = await _client
-        .from('meetings')
-        .select('current_members')
-        .eq('id', meetingId)
-        .single();
-    final current = (meeting['current_members'] as int?) ?? 1;
+
+    final memberRows = await _client
+        .from('meeting_members')
+        .select('user_id')
+        .eq('meeting_id', meetingId);
     await _client
         .from('meetings')
-        .update({'current_members': current + 1}).eq('id', meetingId);
+        .update({'current_members': (memberRows as List).length}).eq(
+      'id',
+      meetingId,
+    );
   }
 
   // ─── 모임 참여 취소 ───

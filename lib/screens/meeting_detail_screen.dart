@@ -6,6 +6,7 @@ import '../services/notification_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import 'chat_screen.dart';
+import 'public_profile_screen.dart';
 
 class MeetingDetailScreen extends StatefulWidget {
   final MeetingModel meeting;
@@ -57,6 +58,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
       return _MeetingMember(
         userId: userId,
         name: name,
+        avatarUrl: user?['avatar_url'] as String?,
       );
     }).toList();
 
@@ -175,6 +177,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
     final meeting = widget.meeting;
     final isDelivery = meeting.type == MeetingType.delivery;
     final isFull = meeting.currentMembers >= meeting.maxMembers;
+    final isJoinClosed = meeting.status != MeetingStatus.open;
     final details = _MeetingDetails.from(meeting);
 
     return Scaffold(
@@ -187,6 +190,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
               isDelivery: isDelivery,
               isJoined: _isJoined,
               isFull: isFull,
+              isJoinClosed: isJoinClosed,
               loading: _loading,
               onBack: () => Navigator.pop(context),
               onAction: _toggleJoin,
@@ -298,6 +302,7 @@ class _HeroSummary extends StatelessWidget {
   final bool isDelivery;
   final bool isJoined;
   final bool isFull;
+  final bool isJoinClosed;
   final bool loading;
   final VoidCallback onBack;
   final VoidCallback onAction;
@@ -308,6 +313,7 @@ class _HeroSummary extends StatelessWidget {
     required this.isDelivery,
     required this.isJoined,
     required this.isFull,
+    required this.isJoinClosed,
     required this.loading,
     required this.onBack,
     required this.onAction,
@@ -409,7 +415,9 @@ class _HeroSummary extends StatelessWidget {
                     height: 46,
                     child: ElevatedButton(
                       onPressed:
-                          (isFull && !isJoined) || loading ? null : onAction,
+                          ((isFull || isJoinClosed) && !isJoined) || loading
+                              ? null
+                              : onAction,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primary,
                         disabledBackgroundColor: const Color(0xFFD9D9D9),
@@ -432,9 +440,11 @@ class _HeroSummary extends StatelessWidget {
                           : Text(
                               isJoined
                                   ? '채팅방 가기'
-                                  : isFull
-                                      ? '모집 완료'
-                                      : '모임 참여하기',
+                                  : isJoinClosed
+                                      ? meeting.status.label
+                                      : isFull
+                                          ? '모집 완료'
+                                          : '모임 참여하기',
                               style: const TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w800,
@@ -755,34 +765,72 @@ class _MemberChip extends StatelessWidget {
     required this.onBlock,
   });
 
+  void _openProfile(BuildContext context) {
+    if (member.userId.isEmpty) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PublicProfileScreen(userId: member.userId),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return PopupMenuButton<String>(
-      onSelected: (_) => onBlock(),
-      itemBuilder: (_) => [
-        PopupMenuItem(
-          value: 'block',
-          enabled: member.userId != currentUser?.id && !blocked,
-          child: Text(blocked ? '제외됨' : '다시 안 만나기'),
-        ),
-      ],
+    final canBlock = member.userId != currentUser?.id && !blocked;
+
+    return SizedBox(
+      width: 78,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _AvatarCircle(size: 64, label: member.name.substring(0, 1)),
-          const SizedBox(height: 6),
-          SizedBox(
-            width: 72,
-            child: Text(
-              member.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 11,
-                color: blocked ? AppColors.textLight : Colors.black,
-              ),
+          GestureDetector(
+            onTap: () => _openProfile(context),
+            child: _AvatarCircle(
+              size: 64,
+              label: member.name.substring(0, 1),
+              avatarUrl: member.avatarUrl,
             ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Flexible(
+                child: GestureDetector(
+                  onTap: () => _openProfile(context),
+                  child: Text(
+                    member.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: blocked ? AppColors.textLight : Colors.black,
+                    ),
+                  ),
+                ),
+              ),
+              if (member.userId != currentUser?.id) ...[
+                const SizedBox(width: 2),
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: PopupMenuButton<String>(
+                    padding: EdgeInsets.zero,
+                    icon: const Icon(Icons.more_horiz_rounded, size: 16),
+                    onSelected: (_) => onBlock(),
+                    itemBuilder: (_) => [
+                      PopupMenuItem(
+                        value: 'block',
+                        enabled: canBlock,
+                        child: Text(blocked ? '제외됨' : '다시 안 만나기'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
           ),
         ],
       ),
@@ -793,8 +841,13 @@ class _MemberChip extends StatelessWidget {
 class _AvatarCircle extends StatelessWidget {
   final double size;
   final String label;
+  final String? avatarUrl;
 
-  const _AvatarCircle({required this.size, required this.label});
+  const _AvatarCircle({
+    required this.size,
+    required this.label,
+    this.avatarUrl,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -806,11 +859,24 @@ class _AvatarCircle extends StatelessWidget {
         shape: BoxShape.circle,
         border: Border.all(color: const Color(0xFFD9D9D9)),
       ),
+      clipBehavior: Clip.antiAlias,
       alignment: Alignment.center,
-      child: Text(
-        label,
-        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
-      ),
+      child: avatarUrl == null || avatarUrl!.isEmpty
+          ? Text(
+              label,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+            )
+          : Image.network(
+              avatarUrl!,
+              fit: BoxFit.cover,
+              width: size,
+              height: size,
+              errorBuilder: (_, __, ___) => Text(
+                label,
+                style:
+                    const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+              ),
+            ),
     );
   }
 }
@@ -873,10 +939,12 @@ class _MeetingDetails {
 class _MeetingMember {
   final String userId;
   final String name;
+  final String? avatarUrl;
 
   const _MeetingMember({
     required this.userId,
     required this.name,
+    this.avatarUrl,
   });
 }
 

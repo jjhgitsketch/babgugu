@@ -129,6 +129,7 @@ class MeetingModel {
   final double? latitude;
   final double? longitude;
   final String? address;
+  MeetingStatus status;
   int matchPercent;
   bool isJoined;
 
@@ -150,6 +151,7 @@ class MeetingModel {
     this.latitude,
     this.longitude,
     this.address,
+    this.status = MeetingStatus.open,
     this.matchPercent = 0,
     this.isJoined = false,
   });
@@ -179,6 +181,7 @@ class MeetingModel {
         latitude: (json['latitude'] as num?)?.toDouble(),
         longitude: (json['longitude'] as num?)?.toDouble(),
         address: json['address'] as String?,
+        status: MeetingStatusX.fromDb(json['status'] as String?),
       );
 
   Map<String, dynamic> toJson() => {
@@ -197,10 +200,51 @@ class MeetingModel {
         if (latitude != null) 'latitude': latitude,
         if (longitude != null) 'longitude': longitude,
         if (address != null) 'address': address,
+        'status': status.dbValue,
       };
 }
 
 enum MeetingType { restaurant, delivery }
+
+enum MeetingStatus { open, started, completed }
+
+extension MeetingStatusX on MeetingStatus {
+  String get dbValue {
+    switch (this) {
+      case MeetingStatus.open:
+        return 'open';
+      case MeetingStatus.started:
+        return 'started';
+      case MeetingStatus.completed:
+        return 'completed';
+    }
+  }
+
+  String get label {
+    switch (this) {
+      case MeetingStatus.open:
+        return '모집 중';
+      case MeetingStatus.started:
+        return '모임 진행 중';
+      case MeetingStatus.completed:
+        return '모임 완료';
+    }
+  }
+
+  bool get isJoinable => this == MeetingStatus.open;
+
+  static MeetingStatus fromDb(String? value) {
+    switch (value) {
+      case 'started':
+        return MeetingStatus.started;
+      case 'completed':
+        return MeetingStatus.completed;
+      case 'open':
+      default:
+        return MeetingStatus.open;
+    }
+  }
+}
 
 class ChatMessage {
   final String id;

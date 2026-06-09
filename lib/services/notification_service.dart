@@ -6,12 +6,13 @@ import '../models/models.dart';
 
 class AppNotification {
   final String id;
-  final String title;
-  final String body;
+  String title;
+  String body;
   final NotificationType type;
   final String? meetingId;
-  final DateTime time;
+  DateTime time;
   bool isRead;
+  int messageCount;
 
   AppNotification({
     required this.id,
@@ -21,6 +22,7 @@ class AppNotification {
     this.meetingId,
     required this.time,
     this.isRead = false,
+    this.messageCount = 1,
   });
 }
 
@@ -40,7 +42,14 @@ class NotificationService extends ChangeNotifier {
   final List<RealtimeChannel> _channels = [];
 
   List<AppNotification> get notifications => List.unmodifiable(_notifications);
-  int get unreadCount => _notifications.where((n) => !n.isRead).length;
+
+  int get unreadCount => _notifications.fold<int>(0, (total, notification) {
+        if (notification.isRead) return total;
+        if (notification.type == NotificationType.newMessage) {
+          return total + notification.messageCount;
+        }
+        return total + 1;
+      });
 
   Future<void> startListening(List<String> myMeetingIds) async {
     await stopListening();
@@ -63,7 +72,7 @@ class NotificationService extends ChangeNotifier {
             callback: (payload) {
               final record = payload.newRecord;
               final senderId = record['sender_id'] as String?;
-              final senderName = record['sender_name'] as String? ?? '알 수 없음';
+              final senderName = record['sender_name'] as String? ?? '이름 없음';
               final text = record['text'] as String? ?? '';
               final msgType = record['type'] as String? ?? 'text';
 
@@ -72,9 +81,9 @@ class NotificationService extends ChangeNotifier {
 
               if (msgType == 'paymentConfirmRequest') {
                 _addNotification(AppNotification(
-                  id: DateTime.now().millisecondsSinceEpoch.toString(),
+                  id: DateTime.now().microsecondsSinceEpoch.toString(),
                   title: '입금 확인 요청',
-                  body: '$senderName님이 입금 확인을 요청했어요.',
+                  body: '$senderName님이 입금 확인을 요청했어요',
                   type: NotificationType.paymentConfirmRequest,
                   meetingId: meetingId,
                   time: DateTime.now(),
@@ -82,14 +91,11 @@ class NotificationService extends ChangeNotifier {
                 return;
               }
 
-              _addNotification(AppNotification(
-                id: DateTime.now().millisecondsSinceEpoch.toString(),
-                title: '새 메시지',
-                body: '$senderName: $text',
-                type: NotificationType.newMessage,
+              _addMessageNotification(
                 meetingId: meetingId,
-                time: DateTime.now(),
-              ));
+                senderName: senderName,
+                preview: text,
+              );
             },
           )
           .subscribe();
@@ -125,9 +131,9 @@ class NotificationService extends ChangeNotifier {
               } catch (_) {}
 
               _addNotification(AppNotification(
-                id: DateTime.now().millisecondsSinceEpoch.toString(),
+                id: DateTime.now().microsecondsSinceEpoch.toString(),
                 title: '새 멤버 참여',
-                body: '$userName님이 모임에 참여했어요.',
+                body: '$userName님이 모임에 참여했어요',
                 type: NotificationType.newMember,
                 meetingId: meetingId,
                 time: DateTime.now(),
@@ -144,6 +150,43 @@ class NotificationService extends ChangeNotifier {
       await ch.unsubscribe();
     }
     _channels.clear();
+  }
+
+  void _addMessageNotification({
+    required String meetingId,
+    required String senderName,
+    required String preview,
+  }) {
+    final now = DateTime.now();
+    final index = _notifications.indexWhere(
+      (notification) =>
+          notification.type == NotificationType.newMessage &&
+          notification.meetingId == meetingId,
+    );
+
+    if (index == -1) {
+      _addNotification(AppNotification(
+        id: now.microsecondsSinceEpoch.toString(),
+        title: '새 메시지 1개',
+        body: '$senderName: $preview',
+        type: NotificationType.newMessage,
+        meetingId: meetingId,
+        time: now,
+      ));
+      return;
+    }
+
+    final notification = _notifications.removeAt(index);
+    final nextCount = notification.isRead ? 1 : notification.messageCount + 1;
+    notification
+      ..title = '새 메시지 $nextCount개'
+      ..body = '$senderName: $preview'
+      ..time = now
+      ..isRead = false
+      ..messageCount = nextCount;
+
+    _notifications.insert(0, notification);
+    notifyListeners();
   }
 
   void _addNotification(AppNotification notification) {

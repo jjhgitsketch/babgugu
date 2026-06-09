@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/models.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import 'public_profile_screen.dart';
 import 'settlement_request_screen.dart';
 import 'settlement_screen.dart';
 
@@ -129,11 +130,40 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Future<void> _markMeetingStarted() async {
+    if (widget.meeting.hostId != SupabaseService.userId) {
+      _showSnackBar('모임장만 모임을 시작할 수 있어요.');
+      return;
+    }
+    try {
+      await SupabaseService.startMeeting(widget.meeting.id);
+      if (!mounted) return;
+      setState(() => widget.meeting.status = MeetingStatus.started);
+      await _sendMessage(
+        text: '모임이 시작되었어요.\n이제 신규 참여자는 들어올 수 없어요.',
+        type: 'system',
+      );
+    } catch (e) {
+      _showSnackBar('모임 시작에 실패했어요: $e');
+    }
+  }
+
   Future<void> _markMeetingComplete() async {
-    await _sendMessage(
-      text: '오늘 모임이 완료되었어요!\n모임장은 정산을 진행해주세요',
-      type: 'system',
-    );
+    if (widget.meeting.hostId != SupabaseService.userId) {
+      _showSnackBar('모임장만 모임을 완료할 수 있어요.');
+      return;
+    }
+    try {
+      await SupabaseService.completeMeeting(widget.meeting.id);
+      if (!mounted) return;
+      setState(() => widget.meeting.status = MeetingStatus.completed);
+      await _sendMessage(
+        text: '오늘 모임이 완료되었어요!\n모임장은 정산을 진행해주세요',
+        type: 'system',
+      );
+    } catch (e) {
+      _showSnackBar('모임 완료에 실패했어요: $e');
+    }
   }
 
   Future<void> _sendRandomPick() async {
@@ -208,7 +238,9 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           _QuickActions(
             isHost: widget.meeting.hostId == SupabaseService.userId,
+            status: widget.meeting.status,
             onRandomPick: _sendRandomPick,
+            onStart: _markMeetingStarted,
             onComplete: _markMeetingComplete,
             onSettlement: _openSettlementRequest,
           ),
@@ -226,13 +258,17 @@ class _ChatScreenState extends State<ChatScreen> {
 
 class _QuickActions extends StatelessWidget {
   final bool isHost;
+  final MeetingStatus status;
   final VoidCallback onRandomPick;
+  final VoidCallback onStart;
   final VoidCallback onComplete;
   final VoidCallback onSettlement;
 
   const _QuickActions({
     required this.isHost,
+    required this.status,
     required this.onRandomPick,
+    required this.onStart,
     required this.onComplete,
     required this.onSettlement,
   });
@@ -248,8 +284,14 @@ class _QuickActions extends StatelessWidget {
         child: Row(
           children: [
             _QuickActionButton(label: '랜덤 뽑기', onTap: onRandomPick),
-            const SizedBox(width: 10),
-            _QuickActionButton(label: '모임 완료', onTap: onComplete),
+            if (isHost && status == MeetingStatus.open) ...[
+              const SizedBox(width: 10),
+              _QuickActionButton(label: '모임 시작', onTap: onStart),
+            ],
+            if (isHost && status == MeetingStatus.started) ...[
+              const SizedBox(width: 10),
+              _QuickActionButton(label: '모임 완료', onTap: onComplete),
+            ],
             if (isHost) ...[
               const SizedBox(width: 10),
               _QuickActionButton(label: '1/N 정산하기', onTap: onSettlement),
@@ -413,7 +455,12 @@ class _MessageBubble extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!message.isMe) ...[
-            const _ChatAvatar(label: '밥'),
+            _ChatAvatar(
+              label: message.senderName.isNotEmpty
+                  ? message.senderName.substring(0, 1)
+                  : '밥',
+              userId: message.senderId,
+            ),
             const SizedBox(width: 9),
           ],
           if (message.isMe) _MessageTime(time: message.time),
@@ -754,17 +801,28 @@ class _MessageTime extends StatelessWidget {
 
 class _ChatAvatar extends StatelessWidget {
   final String label;
+  final String userId;
 
-  const _ChatAvatar({required this.label});
+  const _ChatAvatar({required this.label, required this.userId});
 
   @override
   Widget build(BuildContext context) {
-    return CircleAvatar(
-      radius: 24,
-      backgroundColor: const Color(0xFFFFE5DD),
-      child: Text(
-        label,
-        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+    return GestureDetector(
+      onTap: userId.isEmpty
+          ? null
+          : () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => PublicProfileScreen(userId: userId),
+                ),
+              ),
+      child: CircleAvatar(
+        radius: 24,
+        backgroundColor: const Color(0xFFFFE5DD),
+        child: Text(
+          label,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+        ),
       ),
     );
   }

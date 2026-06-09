@@ -142,23 +142,14 @@ class _WelcomePage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 40),
-          Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(20)),
-            child: const Center(
-                child: Text('🍽️', style: TextStyle(fontSize: 36))),
+          Center(
+            child: Image.asset(
+              'assets/images/babgugu_logo.png',
+              width: 182,
+              fit: BoxFit.contain,
+              filterQuality: FilterQuality.high,
+            ),
           ),
-          const SizedBox(height: 32),
-          const Text('밥구구',
-              style: TextStyle(
-                  fontSize: 36,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.textPrimary,
-                  height: 1.1,
-                  letterSpacing: -1)),
           const SizedBox(height: 12),
           const Text('혼밥은 이제 그만.\n나와 잘 맞는 사람과 함께 먹어요.',
               style: TextStyle(

@@ -19,8 +19,6 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscure = true;
   String? _error;
 
-  static const _logoColor = Color(0xFFF5B3AA);
-
   @override
   void dispose() {
     _emailController.dispose();
@@ -230,34 +228,11 @@ class _BrandLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          width: 74,
-          height: 74,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: _LoginScreenState._logoColor, width: 3),
-          ),
-          child: const Center(
-            child: Icon(
-              Icons.ramen_dining_outlined,
-              size: 42,
-              color: _LoginScreenState._logoColor,
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          'BabGuGu',
-          style: TextStyle(
-            fontSize: 26,
-            height: 1,
-            color: _LoginScreenState._logoColor,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ],
+    return Image.asset(
+      'assets/images/babgugu_logo.png',
+      width: 188,
+      fit: BoxFit.contain,
+      filterQuality: FilterQuality.high,
     );
   }
 }
