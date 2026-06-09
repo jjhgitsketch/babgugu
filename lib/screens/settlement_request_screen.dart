@@ -7,11 +7,13 @@ import '../theme/app_theme.dart';
 class SettlementRequestResult {
   final int totalAmount;
   final int perPersonAmount;
+  final String bankInfo;
   final List<String> memberNames;
 
   const SettlementRequestResult({
     required this.totalAmount,
     required this.perPersonAmount,
+    required this.bankInfo,
     required this.memberNames,
   });
 }
@@ -28,6 +30,7 @@ class SettlementRequestScreen extends StatefulWidget {
 
 class _SettlementRequestScreenState extends State<SettlementRequestScreen> {
   final _amountController = TextEditingController();
+  final _bankController = TextEditingController();
   final List<_SettlementMember> _members = [];
   bool _loading = true;
 
@@ -37,7 +40,10 @@ class _SettlementRequestScreenState extends State<SettlementRequestScreen> {
   int get _perPersonAmount =>
       _members.isEmpty ? 0 : (_totalAmount / _members.length).round();
 
-  bool get _canSubmit => _totalAmount > 0 && _members.isNotEmpty;
+  bool get _canSubmit =>
+      _totalAmount > 0 &&
+      _bankController.text.trim().isNotEmpty &&
+      _members.isNotEmpty;
 
   @override
   void initState() {
@@ -48,6 +54,7 @@ class _SettlementRequestScreenState extends State<SettlementRequestScreen> {
   @override
   void dispose() {
     _amountController.dispose();
+    _bankController.dispose();
     super.dispose();
   }
 
@@ -96,6 +103,7 @@ class _SettlementRequestScreenState extends State<SettlementRequestScreen> {
     final result = SettlementRequestResult(
       totalAmount: _totalAmount,
       perPersonAmount: _perPersonAmount,
+      bankInfo: _bankController.text.trim(),
       memberNames: _members.map((member) => member.name).toList(),
     );
 
@@ -106,6 +114,7 @@ class _SettlementRequestScreenState extends State<SettlementRequestScreen> {
       builder: (context) => _SettlementConfirmSheet(
         totalAmount: _totalAmount,
         perPersonAmount: _perPersonAmount,
+        bankInfo: _bankController.text.trim(),
         members: _members,
       ),
     );
@@ -146,6 +155,11 @@ class _SettlementRequestScreenState extends State<SettlementRequestScreen> {
                         _AmountBox(
                           controller: _amountController,
                           totalAmount: _totalAmount,
+                          onChanged: (_) => setState(() {}),
+                        ),
+                        const SizedBox(height: 12),
+                        _BankInfoBox(
+                          controller: _bankController,
                           onChanged: (_) => setState(() {}),
                         ),
                         const SizedBox(height: 14),
@@ -242,80 +256,143 @@ class _AmountBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasAmount = totalAmount > 0;
+
     return Container(
-      height: 75,
+      height: 96,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppColors.primary, width: 2),
       ),
-      child: totalAmount > 0
-          ? Padding(
-              padding: const EdgeInsets.fromLTRB(22, 10, 18, 9),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '얼마를 정산할까요?',
-                    style: TextStyle(fontSize: 13, color: Color(0xFF7C7C7C)),
+      child: Stack(
+        children: [
+          Positioned(
+            left: hasAmount ? 56 : 22,
+            right: hasAmount ? 14 : 22,
+            top: hasAmount ? 38 : 0,
+            bottom: hasAmount ? 9 : 0,
+            child: Center(
+              child: TextField(
+                controller: controller,
+                keyboardType: TextInputType.number,
+                onChanged: onChanged,
+                textAlignVertical: TextAlignVertical.center,
+                style: TextStyle(
+                  fontSize: hasAmount ? 28 : 18,
+                  height: 1,
+                  fontWeight: hasAmount ? FontWeight.w900 : FontWeight.w500,
+                  color: Colors.black,
+                ),
+                decoration: InputDecoration(
+                  hintText: hasAmount ? null : '얼마를 정산할까요?',
+                  hintStyle: const TextStyle(
+                    fontSize: 18,
+                    height: 1,
+                    color: Color(0xFF7C7C7C),
                   ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Container(
-                        width: 27,
-                        height: 27,
-                        decoration: const BoxDecoration(
-                          color: AppColors.primary,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Center(
-                          child: Text(
-                            '₩',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextField(
-                          controller: controller,
-                          keyboardType: TextInputType.number,
-                          onChanged: onChanged,
-                          style: const TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.black,
-                          ),
-                          decoration: const InputDecoration(
-                            border: InputBorder.none,
-                            isDense: true,
-                            contentPadding: EdgeInsets.zero,
-                            suffixText: '원',
-                          ),
-                        ),
-                      ),
-                    ],
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: EdgeInsets.zero,
+                  suffixText: hasAmount ? '원' : null,
+                  suffixStyle: const TextStyle(
+                    fontSize: 28,
+                    height: 1,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.black,
                   ),
-                ],
-              ),
-            )
-          : TextField(
-              controller: controller,
-              keyboardType: TextInputType.number,
-              onChanged: onChanged,
-              style: const TextStyle(fontSize: 20, color: Colors.black),
-              decoration: const InputDecoration(
-                hintText: '얼마를 정산할까요?',
-                hintStyle: TextStyle(fontSize: 20, color: Color(0xFF7C7C7C)),
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(horizontal: 22),
+                ),
               ),
             ),
+          ),
+          if (hasAmount)
+            const Positioned(
+              left: 18,
+              top: 10,
+              child: Text(
+                '얼마를 정산할까요?',
+                style: TextStyle(fontSize: 13, color: Color(0xFF7C7C7C)),
+              ),
+            ),
+          if (hasAmount)
+            Positioned(
+              left: 18,
+              top: 44,
+              child: Container(
+                width: 30,
+                height: 30,
+                decoration: const BoxDecoration(
+                  color: AppColors.primary,
+                  shape: BoxShape.circle,
+                ),
+                child: const Center(
+                  child: Text(
+                    '₩',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BankInfoBox extends StatelessWidget {
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+
+  const _BankInfoBox({required this.controller, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 58,
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F4F4),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(width: 18),
+          const Icon(
+            Icons.account_balance_rounded,
+            size: 22,
+            color: Color(0xFF7C7C7C),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              keyboardType: TextInputType.text,
+              textInputAction: TextInputAction.done,
+              onChanged: onChanged,
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: Colors.black,
+              ),
+              decoration: const InputDecoration(
+                hintText: '은행/계좌번호를 입력해주세요',
+                hintStyle: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF9A9A9A),
+                ),
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ),
+          const SizedBox(width: 18),
+        ],
+      ),
     );
   }
 }
@@ -374,11 +451,13 @@ class _MemberAmountRow extends StatelessWidget {
 class _SettlementConfirmSheet extends StatelessWidget {
   final int totalAmount;
   final int perPersonAmount;
+  final String bankInfo;
   final List<_SettlementMember> members;
 
   const _SettlementConfirmSheet({
     required this.totalAmount,
     required this.perPersonAmount,
+    required this.bankInfo,
     required this.members,
   });
 
@@ -417,6 +496,18 @@ class _SettlementConfirmSheet extends StatelessWidget {
                       height: 1.25,
                       fontWeight: FontWeight.w800,
                       color: Colors.black,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    bankInfo,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF7C7C7C),
                     ),
                   ),
                   const SizedBox(height: 17),

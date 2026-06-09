@@ -63,9 +63,29 @@ class _SettlementScreenState extends State<SettlementScreen> {
     });
   }
 
+  bool _isCurrentUserMember(_SettlementMember member) {
+    final memberName = member.name.trim();
+    if (memberName.isEmpty) return false;
+
+    final userNames = <String?>[
+      currentUser?.name,
+      currentUser?.nickname,
+      currentUser?.displayName,
+    ]
+        .where((name) => name != null && name.trim().isNotEmpty)
+        .map((name) => name!.trim())
+        .toSet();
+
+    return userNames.contains(memberName);
+  }
+
   Future<void> _requestPaymentCheck(int index) async {
     if (widget.isHost) return;
     final member = _members[index];
+    if (!_isCurrentUserMember(member)) {
+      _showSnackBar('본인 입금만 확인 요청할 수 있어요.');
+      return;
+    }
     if (member.status != _PayStatus.pending) return;
 
     setState(() {
@@ -173,6 +193,8 @@ class _SettlementScreenState extends State<SettlementScreen> {
                           _SettlementMemberRow(
                             member: _members[i],
                             isHost: widget.isHost,
+                            enabled: widget.isHost ||
+                                _isCurrentUserMember(_members[i]),
                             onPressed: widget.isHost
                                 ? () => _confirmPayment(i)
                                 : () => _requestPaymentCheck(i),
@@ -387,11 +409,13 @@ class _RequesterTitle extends StatelessWidget {
 class _SettlementMemberRow extends StatelessWidget {
   final _SettlementMember member;
   final bool isHost;
+  final bool enabled;
   final VoidCallback onPressed;
 
   const _SettlementMemberRow({
     required this.member,
     required this.isHost,
+    required this.enabled,
     required this.onPressed,
   });
 
@@ -408,7 +432,8 @@ class _SettlementMemberRow extends StatelessWidget {
             : isRequested
                 ? '요청 완료'
                 : '입금 확인 요청';
-    final buttonWidth = isHost ? 61.0 : 70.0;
+    final buttonWidth = isHost ? 70.0 : 104.0;
+    final isDisabled = !enabled || isDone || isRequested && !isHost;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 11),
@@ -426,16 +451,15 @@ class _SettlementMemberRow extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           _UnderlinedAmount(amount: member.amount),
-          const SizedBox(width: 17),
+          const SizedBox(width: 8),
           SizedBox(
             width: buttonWidth,
-            height: 18,
+            height: 30,
             child: ElevatedButton(
-              onPressed: isDone || isRequested && !isHost ? null : onPressed,
+              onPressed: isDisabled ? null : onPressed,
               style: ElevatedButton.styleFrom(
-                backgroundColor: isDone || isRequested && !isHost
-                    ? const Color(0xFFD9D9D9)
-                    : AppColors.primary,
+                backgroundColor:
+                    isDisabled ? const Color(0xFFD9D9D9) : AppColors.primary,
                 disabledBackgroundColor: const Color(0xFFD9D9D9),
                 foregroundColor: Colors.white,
                 disabledForegroundColor: Colors.white,
@@ -446,11 +470,16 @@ class _SettlementMemberRow extends StatelessWidget {
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              child: Text(
-                buttonLabel,
-                maxLines: 1,
-                style:
-                    const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  buttonLabel,
+                  maxLines: 1,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
             ),
           ),

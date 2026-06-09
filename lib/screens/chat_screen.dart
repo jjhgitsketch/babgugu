@@ -102,6 +102,11 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _openSettlementRequest() async {
+    if (widget.meeting.hostId != SupabaseService.userId) {
+      _showSnackBar('모임장만 정산을 시작할 수 있어요.');
+      return;
+    }
+
     final result = await Navigator.push<SettlementRequestResult>(
       context,
       MaterialPageRoute(
@@ -111,11 +116,13 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     if (result == null) return;
 
+    final bankInfo = result.bankInfo.replaceAll(RegExp(r'\s+'), ' ').trim();
     await _sendMessage(
       text: [
         'settlement_request',
         'total:${result.totalAmount}',
         'per_person:${result.perPersonAmount}',
+        'bank:$bankInfo',
         'members:${result.memberNames.join(',')}',
       ].join('\n'),
       type: 'dutchPay',
@@ -200,6 +207,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
           ),
           _QuickActions(
+            isHost: widget.meeting.hostId == SupabaseService.userId,
             onRandomPick: _sendRandomPick,
             onComplete: _markMeetingComplete,
             onSettlement: _openSettlementRequest,
@@ -217,11 +225,13 @@ class _ChatScreenState extends State<ChatScreen> {
 }
 
 class _QuickActions extends StatelessWidget {
+  final bool isHost;
   final VoidCallback onRandomPick;
   final VoidCallback onComplete;
   final VoidCallback onSettlement;
 
   const _QuickActions({
+    required this.isHost,
     required this.onRandomPick,
     required this.onComplete,
     required this.onSettlement,
@@ -240,8 +250,10 @@ class _QuickActions extends StatelessWidget {
             _QuickActionButton(label: '랜덤 뽑기', onTap: onRandomPick),
             const SizedBox(width: 10),
             _QuickActionButton(label: '모임 완료', onTap: onComplete),
-            const SizedBox(width: 10),
-            _QuickActionButton(label: '1/N 정산하기', onTap: onSettlement),
+            if (isHost) ...[
+              const SizedBox(width: 10),
+              _QuickActionButton(label: '1/N 정산하기', onTap: onSettlement),
+            ],
           ],
         ),
       ),
@@ -604,6 +616,7 @@ class _SettlementRequestBubble extends StatelessWidget {
                             meeting: meeting,
                             isHost: meeting.hostId == SupabaseService.userId,
                             totalAmount: settlement.totalAmount,
+                            bankInfo: settlement.bankInfo,
                             memberNames: settlement.memberNames,
                           ),
                         ),
@@ -641,17 +654,20 @@ class _SettlementRequestBubble extends StatelessWidget {
 class _SettlementMessage {
   final int totalAmount;
   final int perPersonAmount;
+  final String bankInfo;
   final List<String> memberNames;
 
   const _SettlementMessage({
     required this.totalAmount,
     required this.perPersonAmount,
+    required this.bankInfo,
     required this.memberNames,
   });
 
   static _SettlementMessage parse(String text) {
     var total = 0;
     var perPerson = 0;
+    var bankInfo = '신한은행 1000-000-000001';
     var memberNames = <String>[];
 
     for (final rawLine in text.split('\n')) {
@@ -661,6 +677,9 @@ class _SettlementMessage {
       } else if (line.startsWith('per_person:')) {
         perPerson = int.tryParse(line.replaceFirst('per_person:', '').trim()) ??
             perPerson;
+      } else if (line.startsWith('bank:')) {
+        final parsedBank = line.replaceFirst('bank:', '').trim();
+        if (parsedBank.isNotEmpty) bankInfo = parsedBank;
       } else if (line.startsWith('members:')) {
         memberNames = line
             .replaceFirst('members:', '')
@@ -688,6 +707,7 @@ class _SettlementMessage {
     return _SettlementMessage(
       totalAmount: total,
       perPersonAmount: perPerson,
+      bankInfo: bankInfo,
       memberNames: memberNames,
     );
   }
