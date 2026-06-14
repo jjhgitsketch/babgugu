@@ -180,11 +180,15 @@ class _LoginScreenState extends State<LoginScreen> {
                                   strokeWidth: 2,
                                 ),
                               )
-                            : const Text(
-                                '로그인',
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w800,
+                            : const Center(
+                                child: Text(
+                                  '로그인',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 20,
+                                    height: 1,
+                                    fontWeight: FontWeight.w800,
+                                  ),
                                 ),
                               ),
                       ),

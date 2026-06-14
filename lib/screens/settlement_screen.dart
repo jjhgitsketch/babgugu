@@ -12,6 +12,7 @@ class SettlementScreen extends StatefulWidget {
   final bool isHost;
   final int totalAmount;
   final String bankInfo;
+  final String? receiptImageUrl;
   final List<String> memberNames;
 
   const SettlementScreen({
@@ -20,6 +21,7 @@ class SettlementScreen extends StatefulWidget {
     required this.isHost,
     this.totalAmount = 0,
     this.bankInfo = '신한은행 1000-000-000001',
+    this.receiptImageUrl,
     this.memberNames = const [],
   });
 
@@ -170,6 +172,7 @@ class _SettlementScreenState extends State<SettlementScreen> {
                           memberCount: _memberCount,
                           requestedAt: _requestedAt,
                           bankInfo: widget.bankInfo,
+                          receiptImageUrl: widget.receiptImageUrl,
                           meeting: widget.meeting,
                           requesterName: widget.isHost
                               ? (currentUser?.name ?? '모임장')
@@ -221,6 +224,7 @@ class _SettlementSummaryCard extends StatelessWidget {
   final int memberCount;
   final DateTime requestedAt;
   final String bankInfo;
+  final String? receiptImageUrl;
   final MeetingModel meeting;
   final String requesterName;
   final bool showSummary;
@@ -232,6 +236,7 @@ class _SettlementSummaryCard extends StatelessWidget {
     required this.memberCount,
     required this.requestedAt,
     required this.bankInfo,
+    required this.receiptImageUrl,
     required this.meeting,
     required this.requesterName,
     required this.showSummary,
@@ -332,16 +337,31 @@ class _SettlementSummaryCard extends StatelessWidget {
               value: meeting.location.isEmpty ? '식당 이름 어디점' : meeting.location,
             ),
             const SizedBox(height: 4),
-            const Row(
-              children: [
-                Icon(Icons.photo_camera_rounded, size: 15, color: Colors.white),
-                SizedBox(width: 3),
-                Text(
-                  '첨부한 이미지 보기',
-                  style: TextStyle(fontSize: 10, color: Colors.white),
+            if (receiptImageUrl == null)
+              const Row(
+                children: [
+                  Icon(Icons.photo_camera_rounded,
+                      size: 15, color: Colors.white),
+                  SizedBox(width: 3),
+                  Text('첨부 이미지 없음',
+                      style: TextStyle(fontSize: 10, color: Colors.white)),
+                ],
+              )
+            else ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.network(
+                  receiptImageUrl!,
+                  height: 86,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const Text(
+                    '첨부 이미지를 불러오지 못했어요',
+                    style: TextStyle(fontSize: 10, color: Colors.white),
+                  ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ],
         ],
       ),

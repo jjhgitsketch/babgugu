@@ -1,5 +1,7 @@
 // lib/screens/create_meeting_screen.dart
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/models.dart';
@@ -64,6 +66,7 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
   final _descController = TextEditingController();
   final _locationController = TextEditingController();
   final _deliveryAppController = TextEditingController();
+  final _baeminTogetherUrlController = TextEditingController();
 
   MeetingType _type = MeetingType.restaurant;
   DateTime _selectedDate = DateTime.now();
@@ -72,6 +75,8 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
   bool _hasDutchPay = true;
   bool _useBaeminTogether = true;
   bool _loading = false;
+  Uint8List? _meetingImageBytes;
+  String? _meetingImageName;
   final Set<String> _selectedTags = {'#한식'};
 
   double? _latitude;
@@ -85,7 +90,14 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
     final hasLocation = _locationController.text.trim().isNotEmpty;
     final hasDeliveryApp =
         !_isDelivery || _deliveryAppController.text.trim().isNotEmpty;
-    return hasTitle && hasLocation && hasDeliveryApp && !_loading;
+    final hasBaeminTogetherUrl = !_isDelivery ||
+        !_useBaeminTogether ||
+        _baeminTogetherUrlController.text.trim().isNotEmpty;
+    return hasTitle &&
+        hasLocation &&
+        hasDeliveryApp &&
+        hasBaeminTogetherUrl &&
+        !_loading;
   }
 
   String get _category {
@@ -113,6 +125,7 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
     _titleController.addListener(_onFormChanged);
     _locationController.addListener(_onFormChanged);
     _deliveryAppController.addListener(_onFormChanged);
+    _baeminTogetherUrlController.addListener(_onFormChanged);
   }
 
   @override
@@ -121,6 +134,7 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
     _descController.dispose();
     _locationController.dispose();
     _deliveryAppController.dispose();
+    _baeminTogetherUrlController.dispose();
     super.dispose();
   }
 
@@ -133,6 +147,25 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
       _selectedTags.add(type == MeetingType.delivery ? '#분식' : '#한식');
       if (_maxMembers < _minMembers) _maxMembers = _minMembers;
     });
+  }
+
+  Future<void> _pickMeetingImage() async {
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+        maxWidth: 1600,
+      );
+      if (picked == null) return;
+      final bytes = await picked.readAsBytes();
+      if (!mounted) return;
+      setState(() {
+        _meetingImageBytes = bytes;
+        _meetingImageName = picked.name;
+      });
+    } catch (e) {
+      if (mounted) _showSnack('이미지를 불러오지 못했어요: $e', isError: true);
+    }
   }
 
   Future<void> _pickLocation() async {
@@ -170,6 +203,13 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
         ..._selectedTags,
         if (_isDelivery && _useBaeminTogether) '#함께주문',
       }.toList();
+      final imageUrl = _meetingImageBytes == null
+          ? null
+          : await SupabaseService.uploadMeetingImage(
+              _meetingImageBytes!,
+              _meetingImageName ?? 'meeting.jpg',
+            );
+
       final descriptionParts = [
         _descController.text.trim(),
         if (_isDelivery && _deliveryAppController.text.trim().isNotEmpty)
@@ -195,6 +235,10 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
         latitude: _latitude,
         longitude: _longitude,
         address: _pickedAddress,
+        imageUrl: imageUrl,
+        baeminTogetherUrl: _isDelivery && _useBaeminTogether
+            ? _baeminTogetherUrlController.text.trim()
+            : null,
       );
 
       final created = await SupabaseService.createMeeting(meeting);
@@ -288,7 +332,15 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
                 if (!_isDelivery) ...[
                   const _SectionTitle('모임 이미지'),
                   const SizedBox(height: 9),
-                  const _ImageAttachButton(),
+                  _ImageAttachButton(
+                    imageBytes: _meetingImageBytes,
+                    fileName: _meetingImageName,
+                    onTap: _pickMeetingImage,
+                    onRemove: () => setState(() {
+                      _meetingImageBytes = null;
+                      _meetingImageName = null;
+                    }),
+                  ),
                   const SizedBox(height: 39),
                 ],
                 const _SectionTitle('모임 제목'),
@@ -327,6 +379,14 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
                     onChanged: (value) =>
                         setState(() => _useBaeminTogether = value),
                   ),
+                  if (_useBaeminTogether) ...[
+                    const SizedBox(height: 10),
+                    _TextInput(
+                      controller: _baeminTogetherUrlController,
+                      hintText: '배민 함께주문 링크를 붙여넣어 주세요',
+                      keyboardType: TextInputType.url,
+                    ),
+                  ],
                   const SizedBox(height: 33),
                 ],
                 _SectionTitle(_isDelivery ? '배달 수령지 / 소분 장소' : '식당 위치'),
@@ -355,19 +415,17 @@ class _CreateMeetingScreenState extends State<CreateMeetingScreen> {
                     ),
                   ],
                 ),
-                if (!_isDelivery) ...[
-                  const SizedBox(height: 18),
-                  Row(
-                    children: [
-                      const _SectionTitle('시간 :'),
-                      const SizedBox(width: 12),
-                      _TimeButton(
-                        label: _selectedTime.format(context),
-                        onTap: _pickTime,
-                      ),
-                    ],
-                  ),
-                ],
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    const _SectionTitle('시간 :'),
+                    const SizedBox(width: 12),
+                    _TimeButton(
+                      label: _selectedTime.format(context),
+                      onTap: _pickTime,
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 33),
                 _SectionTitle('인원수 : $_maxMembers명'),
                 const SizedBox(height: 12),
@@ -569,20 +627,94 @@ class _TypeCard extends StatelessWidget {
 }
 
 class _ImageAttachButton extends StatelessWidget {
-  const _ImageAttachButton();
+  final Uint8List? imageBytes;
+  final String? fileName;
+  final VoidCallback onTap;
+  final VoidCallback onRemove;
+
+  const _ImageAttachButton({
+    required this.imageBytes,
+    required this.fileName,
+    required this.onTap,
+    required this.onRemove,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return const Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(Icons.camera_alt_rounded, size: 18, color: Color(0xFFA1A1A1)),
-        SizedBox(width: 3),
-        Text(
-          '이미지 첨부하기',
-          style: TextStyle(fontSize: 11, color: Color(0xFFA1A1A1)),
+    if (imageBytes != null) {
+      return Stack(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.memory(
+              imageBytes!,
+              width: double.infinity,
+              height: 118,
+              fit: BoxFit.cover,
+            ),
+          ),
+          Positioned(
+            right: 8,
+            top: 8,
+            child: Material(
+              color: Colors.black.withValues(alpha: 0.54),
+              shape: const CircleBorder(),
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: onRemove,
+                child: const SizedBox(
+                  width: 28,
+                  height: 28,
+                  child:
+                      Icon(Icons.close_rounded, size: 18, color: Colors.white),
+                ),
+              ),
+            ),
+          ),
+          if (fileName?.isNotEmpty == true)
+            Positioned(
+              left: 9,
+              right: 45,
+              bottom: 8,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.46),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  fileName!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11, color: Colors.white),
+                ),
+              ),
+            ),
+        ],
+      );
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 2, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.camera_alt_rounded,
+                  size: 18, color: Color(0xFFA1A1A1)),
+              SizedBox(width: 3),
+              Text(
+                '이미지 첨부하기',
+                style: TextStyle(fontSize: 11, color: Color(0xFFA1A1A1)),
+              ),
+            ],
+          ),
         ),
-      ],
+      ),
     );
   }
 }
@@ -592,12 +724,14 @@ class _TextInput extends StatelessWidget {
   final String hintText;
   final int maxLines;
   final double height;
+  final TextInputType? keyboardType;
 
   const _TextInput({
     required this.controller,
     required this.hintText,
     this.maxLines = 1,
     this.height = 44,
+    this.keyboardType,
   });
 
   @override
@@ -607,6 +741,7 @@ class _TextInput extends StatelessWidget {
       child: TextField(
         controller: controller,
         maxLines: maxLines,
+        keyboardType: keyboardType,
         style: const TextStyle(fontSize: 13, color: Colors.black),
         decoration: InputDecoration(
           hintText: hintText,

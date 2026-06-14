@@ -111,6 +111,28 @@ class TrustScore {
   static const empty = TrustScore(average: 4.8, count: 0);
 }
 
+class SoloPlaceScore {
+  final double average;
+  final int count;
+
+  const SoloPlaceScore({required this.average, required this.count});
+
+  bool get hasReviews => count > 0;
+  String get display => average.toStringAsFixed(1);
+}
+
+class SoloPlaceReviewDraft {
+  final int score;
+  final List<String> tags;
+  final String comment;
+
+  const SoloPlaceReviewDraft({
+    required this.score,
+    required this.tags,
+    required this.comment,
+  });
+}
+
 class MeetingModel {
   final String id;
   final String title;
@@ -129,6 +151,8 @@ class MeetingModel {
   final double? latitude;
   final double? longitude;
   final String? address;
+  final String? imageUrl;
+  final String? baeminTogetherUrl;
   MeetingStatus status;
   int matchPercent;
   bool isJoined;
@@ -151,6 +175,8 @@ class MeetingModel {
     this.latitude,
     this.longitude,
     this.address,
+    this.imageUrl,
+    this.baeminTogetherUrl,
     this.status = MeetingStatus.open,
     this.matchPercent = 0,
     this.isJoined = false,
@@ -181,6 +207,8 @@ class MeetingModel {
         latitude: (json['latitude'] as num?)?.toDouble(),
         longitude: (json['longitude'] as num?)?.toDouble(),
         address: json['address'] as String?,
+        imageUrl: json['image_url'] as String?,
+        baeminTogetherUrl: json['baemin_together_url'] as String?,
         status: MeetingStatusX.fromDb(json['status'] as String?),
       );
 
@@ -200,6 +228,8 @@ class MeetingModel {
         if (latitude != null) 'latitude': latitude,
         if (longitude != null) 'longitude': longitude,
         if (address != null) 'address': address,
+        if (imageUrl != null) 'image_url': imageUrl,
+        if (baeminTogetherUrl != null) 'baemin_together_url': baeminTogetherUrl,
         'status': status.dbValue,
       };
 }

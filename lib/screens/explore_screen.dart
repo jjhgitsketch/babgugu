@@ -43,7 +43,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
       if (!mounted) return;
       setState(() {
-        _all = meetings;
+        _all = meetings.where((m) => !_isPastMeeting(m)).toList();
         _loading = false;
       });
     } catch (_) {
@@ -549,4 +549,11 @@ String _tagLine(List<String> tags) {
 String _shortDate(DateTime date) {
   final local = date.toLocal();
   return '${local.month}/${local.day}';
+}
+
+bool _isPastMeeting(MeetingModel meeting) {
+  if (meeting.status == MeetingStatus.completed) return true;
+  final today = DateUtils.dateOnly(DateTime.now());
+  final meetingDay = DateUtils.dateOnly(meeting.meetingTime);
+  return meetingDay.isBefore(today);
 }

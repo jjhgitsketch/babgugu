@@ -120,6 +120,63 @@ class SupabaseService {
     }
   }
 
+  static Future<String?> uploadMeetingImage(
+    Uint8List bytes,
+    String fileName,
+  ) async {
+    return _uploadPublicImage(
+      bucket: 'meeting-images',
+      folder: 'meetings',
+      bytes: bytes,
+      fileName: fileName,
+    );
+  }
+
+  static Future<String?> uploadSettlementImage(
+    Uint8List bytes,
+    String fileName,
+  ) async {
+    return _uploadPublicImage(
+      bucket: 'settlement-images',
+      folder: 'settlements',
+      bytes: bytes,
+      fileName: fileName,
+    );
+  }
+
+  static Future<String?> _uploadPublicImage({
+    required String bucket,
+    required String folder,
+    required Uint8List bytes,
+    required String fileName,
+  }) async {
+    try {
+      final safeName = fileName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+      final path =
+          '$userId/$folder/${DateTime.now().microsecondsSinceEpoch}_$safeName';
+      await _client.storage.from(bucket).uploadBinary(
+            path,
+            bytes,
+            fileOptions: FileOptions(
+              upsert: true,
+              contentType: _guessImageContentType(fileName),
+            ),
+          );
+      return _client.storage.from(bucket).getPublicUrl(path);
+    } catch (e) {
+      debugPrint('[SupabaseService] image upload error: $e');
+      return null;
+    }
+  }
+
+  static String _guessImageContentType(String fileName) {
+    final lower = fileName.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    if (lower.endsWith('.gif')) return 'image/gif';
+    return 'image/jpeg';
+  }
+
   // ─── 유저 프로필 로드 (앱 시작 시) ───
   static Future<UserModel?> getUserById(String userId) async {
     if (userId.isEmpty) return null;
@@ -416,6 +473,55 @@ class SupabaseService {
       'score': normalizedScore,
       'comment': comment,
     }, onConflict: 'meeting_id,reviewer_id,reviewed_user_id');
+  }
+
+  static Future<Map<String, SoloPlaceScore>> getSoloPlaceScores(
+    Iterable<String> placeIds,
+  ) async {
+    final ids = placeIds.toSet().where((id) => id.isNotEmpty).toList();
+    if (ids.isEmpty) return {};
+    try {
+      final data = await _client
+          .from('solo_place_reviews')
+          .select('place_id, score')
+          .inFilter('place_id', ids);
+      final totals = <String, double>{};
+      final counts = <String, int>{};
+      for (final row in data as List) {
+        final placeId = row['place_id'] as String?;
+        final score = (row['score'] as num?)?.toDouble();
+        if (placeId == null || score == null) continue;
+        totals[placeId] = (totals[placeId] ?? 0) + score;
+        counts[placeId] = (counts[placeId] ?? 0) + 1;
+      }
+      return {
+        for (final entry in totals.entries)
+          entry.key: SoloPlaceScore(
+            average: entry.value / counts[entry.key]!,
+            count: counts[entry.key]!,
+          ),
+      };
+    } catch (e) {
+      debugPrint('[SupabaseService] getSoloPlaceScores 오류: $e');
+      return {};
+    }
+  }
+
+  static Future<void> submitSoloPlaceReview({
+    required String placeId,
+    required int score,
+    required List<String> tags,
+    String? comment,
+  }) async {
+    if (userId == 'anonymous') return;
+    final normalizedScore = score.clamp(1, 5);
+    await _client.from('solo_place_reviews').upsert({
+      'place_id': placeId,
+      'user_id': userId,
+      'score': normalizedScore,
+      'tags': tags,
+      'comment': comment?.trim().isEmpty == true ? null : comment?.trim(),
+    }, onConflict: 'place_id,user_id');
   }
 
   // ─── 채팅 메시지 불러오기 ───

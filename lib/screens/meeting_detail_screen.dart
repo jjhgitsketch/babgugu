@@ -1,5 +1,6 @@
 // lib/screens/meeting_detail_screen.dart
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/models.dart';
 import '../services/notification_service.dart';
@@ -133,6 +134,27 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
     }
   }
 
+  Future<void> _openBaeminTogether(String rawUrl) async {
+    final trimmed = rawUrl.trim();
+    if (trimmed.isEmpty) return;
+    final url = trimmed.startsWith('http://') || trimmed.startsWith('https://')
+        ? trimmed
+        : 'https://$trimmed';
+    final uri = Uri.tryParse(url);
+    if (uri == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('함께주문 링크 형식이 올바르지 않아요.')),
+      );
+      return;
+    }
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('함께주문 링크를 열지 못했어요.')),
+      );
+    }
+  }
+
   Future<void> _confirmBlockUser(_MeetingMember member) async {
     if (member.userId == currentUser?.id) return;
     final confirm = await showDialog<bool>(
@@ -179,6 +201,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
     final isFull = meeting.currentMembers >= meeting.maxMembers;
     final isJoinClosed = meeting.status != MeetingStatus.open;
     final details = _MeetingDetails.from(meeting);
+    final baeminTogetherUrl = meeting.baeminTogetherUrl?.trim() ?? '';
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -251,6 +274,32 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
                             ),
                           ],
                         ),
+                        if (baeminTogetherUrl.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 43,
+                            child: ElevatedButton.icon(
+                              onPressed: () =>
+                                  _openBaeminTogether(baeminTogetherUrl),
+                              icon: const Icon(Icons.open_in_new_rounded,
+                                  size: 17),
+                              label: const Text('배민 함께주문 들어가기'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primary,
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                textStyle: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 29),
                         _InfoSection(
                           title: '배달 수령지 / 소분 장소',
@@ -924,7 +973,8 @@ class _MeetingDetails {
     for (final line in lines) {
       if (line.startsWith('배달앱:')) {
         deliveryApp = line.replaceFirst('배달앱:', '').trim();
-      } else if (!line.contains('원격주문 가능')) {
+      } else if (!line.contains('원격주문 가능') &&
+          !line.contains('배달의 민족-함께주문 가능')) {
         descriptionLines.add(line);
       }
     }

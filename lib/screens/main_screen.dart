@@ -263,6 +263,10 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
   @override
   Widget build(BuildContext context) {
     final meetings = _filteredMeetings;
+    final activeMeetings = meetings.where((m) => !_isPastMeeting(m)).toList()
+      ..sort((a, b) => a.meetingTime.compareTo(b.meetingTime));
+    final pastMeetings = meetings.where(_isPastMeeting).toList()
+      ..sort((a, b) => b.meetingTime.compareTo(a.meetingTime));
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -315,17 +319,44 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 361),
                     child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        for (final meeting in meetings)
-                          _ChatRoomTile(
-                            meeting: meeting,
-                            onOpen: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ChatScreen(meeting: meeting),
+                        if (activeMeetings.isNotEmpty) ...[
+                          const _ChatSectionTitle(
+                            title: '진행 중 / 예정 채팅방',
+                          ),
+                          const SizedBox(height: 4),
+                          for (final meeting in activeMeetings)
+                            _ChatRoomTile(
+                              meeting: meeting,
+                              onOpen: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ChatScreen(meeting: meeting),
+                                ),
                               ),
                             ),
+                        ],
+                        if (pastMeetings.isNotEmpty) ...[
+                          if (activeMeetings.isNotEmpty)
+                            const SizedBox(height: 26),
+                          const _ChatSectionTitle(
+                            title: '지난 모임 기록',
+                            subtitle: '완료되었거나 날짜가 지난 모임 채팅방이에요',
                           ),
+                          const SizedBox(height: 4),
+                          for (final meeting in pastMeetings)
+                            _ChatRoomTile(
+                              meeting: meeting,
+                              isPast: true,
+                              onOpen: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ChatScreen(meeting: meeting),
+                                ),
+                              ),
+                            ),
+                        ],
                       ],
                     ),
                   ),
@@ -399,13 +430,53 @@ class _SortLabel extends StatelessWidget {
   }
 }
 
+class _ChatSectionTitle extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+
+  const _ChatSectionTitle({required this.title, this.subtitle});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 2, bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
+              color: Colors.black,
+            ),
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 3),
+            Text(
+              subtitle!,
+              style: const TextStyle(
+                fontSize: 11,
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _ChatRoomTile extends StatelessWidget {
   final MeetingModel meeting;
   final VoidCallback onOpen;
+  final bool isPast;
 
   const _ChatRoomTile({
     required this.meeting,
     required this.onOpen,
+    this.isPast = false,
   });
 
   @override
@@ -463,10 +534,12 @@ class _ChatRoomTile extends StatelessWidget {
                   const Spacer(),
                   Row(
                     children: [
-                      const Icon(
-                        Icons.chevron_right_rounded,
-                        size: 30,
-                        color: Colors.black,
+                      Icon(
+                        isPast
+                            ? Icons.history_rounded
+                            : Icons.chevron_right_rounded,
+                        size: isPast ? 23 : 30,
+                        color: isPast ? AppColors.textSecondary : Colors.black,
                       ),
                       const SizedBox(width: 7),
                       SizedBox(
@@ -483,9 +556,9 @@ class _ChatRoomTile extends StatelessWidget {
                               borderRadius: BorderRadius.circular(10),
                             ),
                           ),
-                          child: const Text(
-                            '채팅방 가기',
-                            style: TextStyle(fontSize: 15),
+                          child: Text(
+                            isPast ? '기록 보기' : '채팅방 가기',
+                            style: const TextStyle(fontSize: 15),
                           ),
                         ),
                       ),
@@ -537,4 +610,11 @@ String _formatKoreanTime(DateTime date) {
       date.hour > 12 ? date.hour - 12 : (date.hour == 0 ? 12 : date.hour);
   final minute = date.minute.toString().padLeft(2, '0');
   return '$period $hour:$minute';
+}
+
+bool _isPastMeeting(MeetingModel meeting) {
+  if (meeting.status == MeetingStatus.completed) return true;
+  final today = DateUtils.dateOnly(DateTime.now());
+  final meetingDay = DateUtils.dateOnly(meeting.meetingTime);
+  return meetingDay.isBefore(today);
 }

@@ -27,7 +27,9 @@ class _MapScreenState extends State<MapScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final meetings = await SupabaseService.getMeetingsExcludingBlocked();
+      final meetings = (await SupabaseService.getMeetingsExcludingBlocked())
+          .where((m) => !_isPastMeeting(m))
+          .toList();
       final myIds = await SupabaseService.getMyMeetingIds();
       final myTags = currentUser?.tags ?? [];
       for (final m in meetings) {
@@ -330,4 +332,11 @@ class LocationResult {
   final String address;
   const LocationResult(
       {required this.latitude, required this.longitude, required this.address});
+}
+
+bool _isPastMeeting(MeetingModel meeting) {
+  if (meeting.status == MeetingStatus.completed) return true;
+  final today = DateUtils.dateOnly(DateTime.now());
+  final meetingDay = DateUtils.dateOnly(meeting.meetingTime);
+  return meetingDay.isBefore(today);
 }

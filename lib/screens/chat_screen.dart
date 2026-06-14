@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/models.dart';
 import '../services/supabase_service.dart';
@@ -124,6 +125,8 @@ class _ChatScreenState extends State<ChatScreen> {
         'total:${result.totalAmount}',
         'per_person:${result.perPersonAmount}',
         'bank:$bankInfo',
+        if (result.receiptImageUrl?.isNotEmpty == true)
+          'image:${result.receiptImageUrl}',
         'members:${result.memberNames.join(',')}',
       ].join('\n'),
       type: 'dutchPay',
@@ -185,6 +188,21 @@ class _ChatScreenState extends State<ChatScreen> {
     await _sendMessage(text: '랜덤 뽑기 결과: $picked');
   }
 
+  Future<void> _openBaeminTogether() async {
+    final trimmed = widget.meeting.baeminTogetherUrl?.trim() ?? '';
+    if (trimmed.isEmpty) return;
+    final url = trimmed.startsWith('http://') || trimmed.startsWith('https://')
+        ? trimmed
+        : 'https://$trimmed';
+    final uri = Uri.tryParse(url);
+    if (uri == null) {
+      _showSnackBar('함께주문 링크 형식이 올바르지 않아요.');
+      return;
+    }
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened) _showSnackBar('함께주문 링크를 열지 못했어요.');
+  }
+
   void _showSnackBar(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -239,10 +257,13 @@ class _ChatScreenState extends State<ChatScreen> {
           _QuickActions(
             isHost: widget.meeting.hostId == SupabaseService.userId,
             status: widget.meeting.status,
+            hasBaeminTogetherUrl:
+                (widget.meeting.baeminTogetherUrl?.trim().isNotEmpty ?? false),
             onRandomPick: _sendRandomPick,
             onStart: _markMeetingStarted,
             onComplete: _markMeetingComplete,
             onSettlement: _openSettlementRequest,
+            onBaeminTogether: _openBaeminTogether,
           ),
           _InputBar(
             controller: _controller,
@@ -263,6 +284,8 @@ class _QuickActions extends StatelessWidget {
   final VoidCallback onStart;
   final VoidCallback onComplete;
   final VoidCallback onSettlement;
+  final bool hasBaeminTogetherUrl;
+  final VoidCallback onBaeminTogether;
 
   const _QuickActions({
     required this.isHost,
@@ -271,6 +294,8 @@ class _QuickActions extends StatelessWidget {
     required this.onStart,
     required this.onComplete,
     required this.onSettlement,
+    required this.hasBaeminTogetherUrl,
+    required this.onBaeminTogether,
   });
 
   @override
@@ -283,6 +308,10 @@ class _QuickActions extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
+            if (hasBaeminTogetherUrl) ...[
+              _QuickActionButton(label: '배민 함께주문', onTap: onBaeminTogether),
+              const SizedBox(width: 10),
+            ],
             _QuickActionButton(label: '랜덤 뽑기', onTap: onRandomPick),
             if (isHost && status == MeetingStatus.open) ...[
               const SizedBox(width: 10),
@@ -664,6 +693,7 @@ class _SettlementRequestBubble extends StatelessWidget {
                             isHost: meeting.hostId == SupabaseService.userId,
                             totalAmount: settlement.totalAmount,
                             bankInfo: settlement.bankInfo,
+                            receiptImageUrl: settlement.receiptImageUrl,
                             memberNames: settlement.memberNames,
                           ),
                         ),
@@ -702,12 +732,14 @@ class _SettlementMessage {
   final int totalAmount;
   final int perPersonAmount;
   final String bankInfo;
+  final String? receiptImageUrl;
   final List<String> memberNames;
 
   const _SettlementMessage({
     required this.totalAmount,
     required this.perPersonAmount,
     required this.bankInfo,
+    this.receiptImageUrl,
     required this.memberNames,
   });
 
@@ -715,6 +747,7 @@ class _SettlementMessage {
     var total = 0;
     var perPerson = 0;
     var bankInfo = '신한은행 1000-000-000001';
+    String? receiptImageUrl;
     var memberNames = <String>[];
 
     for (final rawLine in text.split('\n')) {
@@ -727,6 +760,9 @@ class _SettlementMessage {
       } else if (line.startsWith('bank:')) {
         final parsedBank = line.replaceFirst('bank:', '').trim();
         if (parsedBank.isNotEmpty) bankInfo = parsedBank;
+      } else if (line.startsWith('image:')) {
+        final parsedImageUrl = line.replaceFirst('image:', '').trim();
+        if (parsedImageUrl.isNotEmpty) receiptImageUrl = parsedImageUrl;
       } else if (line.startsWith('members:')) {
         memberNames = line
             .replaceFirst('members:', '')
@@ -755,6 +791,7 @@ class _SettlementMessage {
       totalAmount: total,
       perPersonAmount: perPerson,
       bankInfo: bankInfo,
+      receiptImageUrl: receiptImageUrl,
       memberNames: memberNames,
     );
   }

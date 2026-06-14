@@ -1,4 +1,5 @@
 // lib/main.dart
+import 'dart:ui' show PointerDeviceKind;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -43,7 +44,43 @@ class MealMateApp extends StatelessWidget {
       title: '밥구구',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.theme,
+      scrollBehavior: const _AppScrollBehavior(),
       home: const _AuthGate(),
+    );
+  }
+}
+
+class _AppScrollBehavior extends MaterialScrollBehavior {
+  const _AppScrollBehavior();
+
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+        ...super.dragDevices,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.trackpad,
+      };
+}
+
+class _LoadingScreen extends StatelessWidget {
+  const _LoadingScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: Color(0xFFF86261),
+      body: SafeArea(
+        child: Center(
+          child: FractionalTranslation(
+            translation: Offset(0, -0.12),
+            child: Image(
+              image: AssetImage('assets/images/babgugu_loading_logo.png'),
+              width: 188,
+              fit: BoxFit.contain,
+              filterQuality: FilterQuality.high,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -151,19 +188,7 @@ class _AuthGateState extends State<_AuthGate> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(
-        backgroundColor: AppColors.bg,
-        body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('🍽️', style: TextStyle(fontSize: 48)),
-              SizedBox(height: 16),
-              CircularProgressIndicator(color: AppColors.primary),
-            ],
-          ),
-        ),
-      );
+      return const _LoadingScreen();
     }
 
     if (_isPasswordReset) return const ResetPasswordScreen();

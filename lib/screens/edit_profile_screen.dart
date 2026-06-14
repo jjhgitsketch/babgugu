@@ -76,67 +76,70 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: const Color(0xFFE0E0E0),
-                borderRadius: BorderRadius.circular(99),
+      builder: (context) {
+        final bottomInset = MediaQuery.paddingOf(context).bottom;
+        return Container(
+          padding: EdgeInsets.fromLTRB(20, 12, 20, 30 + bottomInset),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE0E0E0),
+                  borderRadius: BorderRadius.circular(99),
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              '프로필 사진 변경',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 18),
-            _PickerOption(
-              icon: Icons.photo_library_outlined,
-              label: '갤러리에서 선택',
-              color: AppColors.primary,
-              onTap: () {
-                Navigator.pop(context);
-                _pickImage(ImageSource.gallery);
-              },
-            ),
-            const SizedBox(height: 10),
-            _PickerOption(
-              icon: Icons.camera_alt_outlined,
-              label: '카메라로 촬영',
-              color: Colors.teal,
-              onTap: () {
-                Navigator.pop(context);
-                _pickImage(ImageSource.camera);
-              },
-            ),
-            if (currentUser?.avatarUrl != null ||
-                _pickedImageBytes != null) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: 20),
+              const Text(
+                '프로필 사진 변경',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 18),
               _PickerOption(
-                icon: Icons.delete_outline,
-                label: '사진 제거',
-                color: Colors.red,
+                icon: Icons.photo_library_outlined,
+                label: '갤러리에서 선택',
+                color: AppColors.primary,
                 onTap: () {
                   Navigator.pop(context);
-                  setState(() {
-                    _pickedImageBytes = null;
-                    _pickedImageName = 'remove';
-                  });
+                  _pickImage(ImageSource.gallery);
                 },
               ),
+              const SizedBox(height: 10),
+              _PickerOption(
+                icon: Icons.camera_alt_outlined,
+                label: '카메라로 촬영',
+                color: Colors.teal,
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickImage(ImageSource.camera);
+                },
+              ),
+              if (currentUser?.avatarUrl != null ||
+                  _pickedImageBytes != null) ...[
+                const SizedBox(height: 10),
+                _PickerOption(
+                  icon: Icons.delete_outline,
+                  label: '사진 제거',
+                  color: Colors.red,
+                  onTap: () {
+                    Navigator.pop(context);
+                    setState(() {
+                      _pickedImageBytes = null;
+                      _pickedImageName = 'remove';
+                    });
+                  },
+                ),
+              ],
             ],
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 

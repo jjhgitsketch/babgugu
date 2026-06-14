@@ -1,5 +1,7 @@
 // lib/screens/settlement_request_screen.dart
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../models/models.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
@@ -8,12 +10,14 @@ class SettlementRequestResult {
   final int totalAmount;
   final int perPersonAmount;
   final String bankInfo;
+  final String? receiptImageUrl;
   final List<String> memberNames;
 
   const SettlementRequestResult({
     required this.totalAmount,
     required this.perPersonAmount,
     required this.bankInfo,
+    this.receiptImageUrl,
     required this.memberNames,
   });
 }
@@ -32,7 +36,10 @@ class _SettlementRequestScreenState extends State<SettlementRequestScreen> {
   final _amountController = TextEditingController();
   final _bankController = TextEditingController();
   final List<_SettlementMember> _members = [];
+  Uint8List? _receiptImageBytes;
+  String? _receiptImageName;
   bool _loading = true;
+  bool _submitting = false;
 
   int get _totalAmount =>
       int.tryParse(_amountController.text.replaceAll(',', '')) ?? 0;
@@ -43,7 +50,8 @@ class _SettlementRequestScreenState extends State<SettlementRequestScreen> {
   bool get _canSubmit =>
       _totalAmount > 0 &&
       _bankController.text.trim().isNotEmpty &&
-      _members.isNotEmpty;
+      _members.isNotEmpty &&
+      !_submitting;
 
   @override
   void initState() {
@@ -56,6 +64,31 @@ class _SettlementRequestScreenState extends State<SettlementRequestScreen> {
     _amountController.dispose();
     _bankController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickReceiptImage() async {
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+        maxWidth: 1600,
+      );
+      if (picked == null) return;
+      final bytes = await picked.readAsBytes();
+      if (!mounted) return;
+      setState(() {
+        _receiptImageBytes = bytes;
+        _receiptImageName = picked.name;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('이미지를 불러오지 못했어요: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Future<void> _loadMembers() async {
@@ -100,27 +133,43 @@ class _SettlementRequestScreenState extends State<SettlementRequestScreen> {
 
   Future<void> _confirmRequest() async {
     if (!_canSubmit) return;
-    final result = SettlementRequestResult(
-      totalAmount: _totalAmount,
-      perPersonAmount: _perPersonAmount,
-      bankInfo: _bankController.text.trim(),
-      memberNames: _members.map((member) => member.name).toList(),
-    );
+    setState(() => _submitting = true);
 
-    final shouldRequest = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _SettlementConfirmSheet(
+    try {
+      final receiptImageUrl = _receiptImageBytes == null
+          ? null
+          : await SupabaseService.uploadSettlementImage(
+              _receiptImageBytes!,
+              _receiptImageName ?? 'receipt.jpg',
+            );
+      if (!mounted) return;
+
+      final result = SettlementRequestResult(
         totalAmount: _totalAmount,
         perPersonAmount: _perPersonAmount,
         bankInfo: _bankController.text.trim(),
-        members: _members,
-      ),
-    );
+        receiptImageUrl: receiptImageUrl,
+        memberNames: _members.map((member) => member.name).toList(),
+      );
 
-    if (!mounted || shouldRequest != true) return;
-    Navigator.pop(context, result);
+      final shouldRequest = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => _SettlementConfirmSheet(
+          totalAmount: _totalAmount,
+          perPersonAmount: _perPersonAmount,
+          bankInfo: _bankController.text.trim(),
+          receiptImageUrl: receiptImageUrl,
+          members: _members,
+        ),
+      );
+
+      if (!mounted || shouldRequest != true) return;
+      Navigator.pop(context, result);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
   }
 
   @override
@@ -163,22 +212,14 @@ class _SettlementRequestScreenState extends State<SettlementRequestScreen> {
                           onChanged: (_) => setState(() {}),
                         ),
                         const SizedBox(height: 14),
-                        const Center(
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.camera_alt_rounded,
-                                  size: 22, color: Color(0xFF7C7C7C)),
-                              SizedBox(width: 8),
-                              Text(
-                                '이미지 첨부하기',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Color(0xFF7C7C7C),
-                                ),
-                              ),
-                            ],
-                          ),
+                        _ReceiptImageButton(
+                          imageBytes: _receiptImageBytes,
+                          fileName: _receiptImageName,
+                          onTap: _pickReceiptImage,
+                          onRemove: () => setState(() {
+                            _receiptImageBytes = null;
+                            _receiptImageName = null;
+                          }),
                         ),
                         const SizedBox(height: 40),
                         Text(
@@ -235,6 +276,101 @@ class _SettlementRequestScreenState extends State<SettlementRequestScreen> {
                   ),
                 ),
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReceiptImageButton extends StatelessWidget {
+  final Uint8List? imageBytes;
+  final String? fileName;
+  final VoidCallback onTap;
+  final VoidCallback onRemove;
+
+  const _ReceiptImageButton({
+    required this.imageBytes,
+    required this.fileName,
+    required this.onTap,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (imageBytes != null) {
+      return Stack(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.memory(
+              imageBytes!,
+              width: double.infinity,
+              height: 118,
+              fit: BoxFit.cover,
+            ),
+          ),
+          Positioned(
+            right: 8,
+            top: 8,
+            child: Material(
+              color: Colors.black.withValues(alpha: 0.54),
+              shape: const CircleBorder(),
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: onRemove,
+                child: const SizedBox(
+                  width: 28,
+                  height: 28,
+                  child:
+                      Icon(Icons.close_rounded, size: 18, color: Colors.white),
+                ),
+              ),
+            ),
+          ),
+          if (fileName?.isNotEmpty == true)
+            Positioned(
+              left: 9,
+              right: 45,
+              bottom: 8,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.46),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  fileName!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11, color: Colors.white),
+                ),
+              ),
+            ),
+        ],
+      );
+    }
+
+    return Center(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(999),
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.camera_alt_rounded,
+                    size: 22, color: Color(0xFF7C7C7C)),
+                SizedBox(width: 8),
+                Text(
+                  '이미지 첨부하기',
+                  style: TextStyle(fontSize: 14, color: Color(0xFF7C7C7C)),
+                ),
+              ],
             ),
           ),
         ),
@@ -452,12 +588,14 @@ class _SettlementConfirmSheet extends StatelessWidget {
   final int totalAmount;
   final int perPersonAmount;
   final String bankInfo;
+  final String? receiptImageUrl;
   final List<_SettlementMember> members;
 
   const _SettlementConfirmSheet({
     required this.totalAmount,
     required this.perPersonAmount,
     required this.bankInfo,
+    required this.receiptImageUrl,
     required this.members,
   });
 
@@ -510,6 +648,20 @@ class _SettlementConfirmSheet extends StatelessWidget {
                       color: Color(0xFF7C7C7C),
                     ),
                   ),
+                  if (receiptImageUrl != null) ...[
+                    const SizedBox(height: 8),
+                    const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.photo_camera_rounded,
+                            size: 15, color: Color(0xFF7C7C7C)),
+                        SizedBox(width: 4),
+                        Text('첨부 이미지 포함',
+                            style: TextStyle(
+                                fontSize: 11, color: Color(0xFF7C7C7C))),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 17),
                   ...members.map(
                     (member) => Padding(

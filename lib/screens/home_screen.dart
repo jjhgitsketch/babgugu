@@ -51,7 +51,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (!mounted) return;
       setState(() {
-        _myMeetings = meetings.where((m) => m.isJoined).toList();
+        _myMeetings = meetings
+            .where((m) => m.isJoined && !_isPastMeeting(m))
+            .toList()
+          ..sort((a, b) => a.meetingTime.compareTo(b.meetingTime));
         _recommended = recommended;
         _savedMeetingIds = savedIds;
         _loading = false;
@@ -411,7 +414,7 @@ class _HeaderTab extends StatelessWidget {
   }
 }
 
-class _MyMeetingsPanel extends StatelessWidget {
+class _MyMeetingsPanel extends StatefulWidget {
   final List<MeetingModel> meetings;
   final int page;
   final ValueChanged<int> onPageChanged;
@@ -427,39 +430,108 @@ class _MyMeetingsPanel extends StatelessWidget {
   });
 
   @override
+  State<_MyMeetingsPanel> createState() => _MyMeetingsPanelState();
+}
+
+class _MyMeetingsPanelState extends State<_MyMeetingsPanel> {
+  late final PageController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = PageController(
+      initialPage: widget.page.clamp(0, _lastIndex),
+      viewportFraction: 0.86,
+    );
+  }
+
+  int get _lastIndex =>
+      widget.meetings.isEmpty ? 0 : widget.meetings.length - 1;
+
+  @override
+  void didUpdateWidget(covariant _MyMeetingsPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final safePage = widget.page.clamp(0, _lastIndex);
+    if (widget.meetings.length != oldWidget.meetings.length &&
+        _controller.hasClients) {
+      _controller.jumpToPage(safePage);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _movePage(int delta) {
+    if (widget.meetings.isEmpty || !_controller.hasClients) return;
+    final next = (widget.page + delta).clamp(0, _lastIndex);
+    if (next == widget.page) return;
+    _controller.animateToPage(
+      next,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final meetings = widget.meetings;
     if (meetings.isEmpty) {
       return const Padding(
         padding: EdgeInsets.fromLTRB(20, 32, 20, 0),
         child: _EmptyState(
-          title:
-              '\uCC38\uC5EC \uC911\uC778 \uBAA8\uC784\uC774 \uC544\uC9C1 \uC5C6\uC5B4\uC694',
-          message:
-              '\uC0C8 \uBAA8\uC784\uC744 \uB9CC\uB4E4\uAC70\uB098 \uD0D0\uC0C9\uC5D0\uC11C \uCC3E\uC544\uBCF4\uC138\uC694.',
+          title: '참여 중인 모임이 아직 없어요',
+          message: '새 모임을 만들거나 탐색에서 찾아보세요.',
         ),
       );
     }
 
+    final isWide = MediaQuery.sizeOf(context).width >= 600;
     return Column(
       children: [
         const SizedBox(height: 21),
         SizedBox(
           height: 430,
-          child: PageView.builder(
-            controller: PageController(viewportFraction: 0.86),
-            itemCount: meetings.length,
-            onPageChanged: onPageChanged,
-            itemBuilder: (context, index) {
-              final meeting = meetings[index];
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: _MyMeetingCard(
-                  meeting: meeting,
-                  onChatTap: () => onChatTap(meeting),
-                  onCancelTap: () => onCancelTap(meeting),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              PageView.builder(
+                controller: _controller,
+                itemCount: meetings.length,
+                onPageChanged: widget.onPageChanged,
+                itemBuilder: (context, index) {
+                  final meeting = meetings[index];
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: _MyMeetingCard(
+                      meeting: meeting,
+                      onChatTap: () => widget.onChatTap(meeting),
+                      onCancelTap: () => widget.onCancelTap(meeting),
+                    ),
+                  );
+                },
+              ),
+              if (isWide && meetings.length > 1) ...[
+                Positioned(
+                  left: 18,
+                  child: _PageArrowButton(
+                    icon: Icons.chevron_left_rounded,
+                    enabled: widget.page > 0,
+                    onTap: () => _movePage(-1),
+                  ),
                 ),
-              );
-            },
+                Positioned(
+                  right: 18,
+                  child: _PageArrowButton(
+                    icon: Icons.chevron_right_rounded,
+                    enabled: widget.page < _lastIndex,
+                    onTap: () => _movePage(1),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
         const SizedBox(height: 14),
@@ -469,18 +541,53 @@ class _MyMeetingsPanel extends StatelessWidget {
             meetings.length,
             (index) => AnimatedContainer(
               duration: const Duration(milliseconds: 180),
-              width: page == index ? 15 : 7,
+              width: widget.page == index ? 15 : 7,
               height: 7,
               margin: const EdgeInsets.symmetric(horizontal: 3),
               decoration: BoxDecoration(
-                color:
-                    page == index ? AppColors.primary : const Color(0xFFD9D9D9),
+                color: widget.page == index
+                    ? AppColors.primary
+                    : const Color(0xFFD9D9D9),
                 borderRadius: BorderRadius.circular(99),
               ),
             ),
           ),
         ),
       ],
+    );
+  }
+}
+
+class _PageArrowButton extends StatelessWidget {
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  const _PageArrowButton({
+    required this.icon,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white.withValues(alpha: enabled ? 0.96 : 0.42),
+      shape: const CircleBorder(),
+      elevation: enabled ? 3 : 0,
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: enabled ? onTap : null,
+        child: SizedBox(
+          width: 38,
+          height: 38,
+          child: Icon(
+            icon,
+            size: 29,
+            color: enabled ? AppColors.primary : const Color(0xFFCFCFCF),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1096,13 +1203,41 @@ class _MenuRecommendCard extends StatelessWidget {
   }
 }
 
-class _SoloPlaceCard extends StatelessWidget {
+class _SoloPlaceCard extends StatefulWidget {
   final SoloPlace place;
 
   const _SoloPlaceCard({required this.place});
 
   @override
+  State<_SoloPlaceCard> createState() => _SoloPlaceCardState();
+}
+
+class _SoloPlaceCardState extends State<_SoloPlaceCard> {
+  SoloPlaceScore? _score;
+
+  SoloPlace get place => widget.place;
+  SoloPlaceScore get _visibleScore =>
+      _score ?? SoloPlaceScore(average: place.baseScore, count: 0);
+
+  @override
+  void initState() {
+    super.initState();
+    _loadScore();
+  }
+
+  Future<void> _loadScore() async {
+    final scores = await SupabaseService.getSoloPlaceScores([place.id]);
+    if (!mounted) return;
+    setState(() => _score = scores[place.id]);
+  }
+
+  Future<void> _review() async {
+    await _showSoloPlaceReviewSheet(context, place, _loadScore);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final score = _visibleScore;
     return Container(
       width: 160,
       decoration: BoxDecoration(
@@ -1115,10 +1250,10 @@ class _SoloPlaceCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            height: 76,
+            height: 66,
             color: place.color.withValues(alpha: 0.16),
             child: Center(
-              child: Icon(place.icon, size: 40, color: place.color),
+              child: Icon(place.icon, size: 35, color: place.color),
             ),
           ),
           Padding(
@@ -1131,11 +1266,11 @@ class _SoloPlaceCard extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 15,
+                    fontSize: 14,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 2),
                 Text(
                   place.category,
                   maxLines: 1,
@@ -1146,32 +1281,23 @@ class _SoloPlaceCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
+                _SoloScoreLine(score: score),
+                const SizedBox(height: 6),
                 Row(
                   children: [
-                    const Icon(Icons.directions_walk_rounded,
-                        size: 14, color: AppColors.primary),
-                    const SizedBox(width: 3),
-                    Text(
-                      place.distance,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
+                    Expanded(
+                      child: Text(
+                        place.distance,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ),
+                    _TinyReviewButton(onTap: _review),
                   ],
-                ),
-                const SizedBox(height: 6),
-                SizedBox(
-                  height: 20,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: place.tags.take(2).length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 4),
-                    itemBuilder: (context, index) {
-                      return _MiniChip(label: place.tags[index]);
-                    },
-                  ),
                 ),
               ],
             ),
@@ -1407,15 +1533,42 @@ class _SoloSearchField extends StatelessWidget {
   }
 }
 
-class _SoloPlaceListTile extends StatelessWidget {
+class _SoloPlaceListTile extends StatefulWidget {
   final SoloPlace place;
 
   const _SoloPlaceListTile({required this.place});
 
   @override
+  State<_SoloPlaceListTile> createState() => _SoloPlaceListTileState();
+}
+
+class _SoloPlaceListTileState extends State<_SoloPlaceListTile> {
+  SoloPlaceScore? _score;
+
+  SoloPlace get place => widget.place;
+  SoloPlaceScore get _visibleScore =>
+      _score ?? SoloPlaceScore(average: place.baseScore, count: 0);
+
+  @override
+  void initState() {
+    super.initState();
+    _loadScore();
+  }
+
+  Future<void> _loadScore() async {
+    final scores = await SupabaseService.getSoloPlaceScores([place.id]);
+    if (!mounted) return;
+    setState(() => _score = scores[place.id]);
+  }
+
+  Future<void> _review() async {
+    await _showSoloPlaceReviewSheet(context, place, _loadScore);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 116,
+      height: 138,
       child: Row(
         children: [
           Container(
@@ -1431,6 +1584,7 @@ class _SoloPlaceListTile extends StatelessWidget {
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Row(
                   children: [
@@ -1455,12 +1609,17 @@ class _SoloPlaceListTile extends StatelessWidget {
                         color: Color(0xFF909090),
                       ),
                     ),
-                    const Spacer(),
-                    const Icon(Icons.chevron_right_rounded,
-                        size: 32, color: Colors.black),
                   ],
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 5),
+                Row(
+                  children: [
+                    _SoloScoreLine(score: _visibleScore),
+                    const Spacer(),
+                    _ReviewPillButton(onTap: _review),
+                  ],
+                ),
+                const SizedBox(height: 5),
                 Text(
                   place.tags.map((tag) => '#$tag').join(' '),
                   maxLines: 1,
@@ -1470,7 +1629,7 @@ class _SoloPlaceListTile extends StatelessWidget {
                     color: Color(0xFF909090),
                   ),
                 ),
-                const SizedBox(height: 5),
+                const SizedBox(height: 4),
                 _PlaceMetaLine(
                   icon: Icons.location_on_outlined,
                   text: place.address,
@@ -1489,6 +1648,316 @@ class _SoloPlaceListTile extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _SoloScoreLine extends StatelessWidget {
+  final SoloPlaceScore score;
+
+  const _SoloScoreLine({required this.score});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.star_rounded, size: 15, color: AppColors.primary),
+        const SizedBox(width: 2),
+        Text(
+          '혼밥 ${score.display}',
+          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          '리뷰 ${score.count}',
+          style: const TextStyle(
+            fontSize: 9,
+            color: AppColors.textSecondary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TinyReviewButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _TinyReviewButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 22,
+        padding: const EdgeInsets.symmetric(horizontal: 9),
+        decoration: BoxDecoration(
+          color: AppColors.primary,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        alignment: Alignment.center,
+        child: const Text(
+          '평가',
+          style: TextStyle(
+            fontSize: 9,
+            color: Colors.white,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReviewPillButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _ReviewPillButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 28,
+      child: OutlinedButton.icon(
+        onPressed: onTap,
+        icon: const Icon(Icons.edit_rounded, size: 13),
+        label: const Text('평가하기'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.primary,
+          side: const BorderSide(color: AppColors.primary),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          textStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(99)),
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> _showSoloPlaceReviewSheet(
+  BuildContext context,
+  SoloPlace place,
+  Future<void> Function() onSaved,
+) async {
+  final draft = await showModalBottomSheet<SoloPlaceReviewDraft>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => _SoloPlaceReviewSheet(place: place),
+  );
+  if (draft == null) return;
+  try {
+    await SupabaseService.submitSoloPlaceReview(
+      placeId: place.id,
+      score: draft.score,
+      tags: draft.tags,
+      comment: draft.comment,
+    );
+    await onSaved();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('혼밥 장소 평가를 저장했어요.')),
+    );
+  } catch (e) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('평가 저장에 실패했어요: $e')),
+    );
+  }
+}
+
+class _SoloPlaceReviewSheet extends StatefulWidget {
+  final SoloPlace place;
+
+  const _SoloPlaceReviewSheet({required this.place});
+
+  @override
+  State<_SoloPlaceReviewSheet> createState() => _SoloPlaceReviewSheetState();
+}
+
+class _SoloPlaceReviewSheetState extends State<_SoloPlaceReviewSheet> {
+  static const _reviewTags = [
+    '혼자편함',
+    '조용함',
+    '가성비',
+    '빠른식사',
+    '좌석많음',
+  ];
+
+  final _commentController = TextEditingController();
+  final Set<String> _selectedTags = {};
+  int _score = 5;
+
+  @override
+  void dispose() {
+    _commentController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    Navigator.pop(
+      context,
+      SoloPlaceReviewDraft(
+        score: _score,
+        tags: _selectedTags.toList(),
+        comment: _commentController.text.trim(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.only(bottom: bottomInset),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 46,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFDADADA),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                widget.place.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style:
+                    const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                '혼밥하기 얼마나 괜찮았나요?',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(5, (index) {
+                  final value = index + 1;
+                  return IconButton(
+                    onPressed: () => setState(() => _score = value),
+                    icon: Icon(
+                      value <= _score
+                          ? Icons.star_rounded
+                          : Icons.star_border_rounded,
+                      size: 35,
+                      color: AppColors.primary,
+                    ),
+                  );
+                }),
+              ),
+              Center(
+                child: Text(
+                  '$_score.0점',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 17),
+              Wrap(
+                spacing: 7,
+                runSpacing: 7,
+                children: _reviewTags.map((tag) {
+                  final selected = _selectedTags.contains(tag);
+                  return GestureDetector(
+                    onTap: () => setState(() {
+                      if (selected) {
+                        _selectedTags.remove(tag);
+                      } else {
+                        _selectedTags.add(tag);
+                      }
+                    }),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? AppColors.primary
+                            : const Color(0xFFF1F1F1),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        '#$tag',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: selected ? Colors.white : Colors.black,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _commentController,
+                minLines: 2,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  hintText: '짧은 후기를 남겨주세요 (선택)',
+                  hintStyle: const TextStyle(fontSize: 12),
+                  filled: true,
+                  fillColor: const Color(0xFFF6F6F6),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.all(13),
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: _submit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    '평가 저장하기',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1624,34 +2093,8 @@ class _CategoryPanel extends StatelessWidget {
   }
 }
 
-class _MiniChip extends StatelessWidget {
-  final String label;
-
-  const _MiniChip({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-      decoration: BoxDecoration(
-        color: AppColors.primaryBg,
-        borderRadius: BorderRadius.circular(99),
-      ),
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(
-          fontSize: 8,
-          fontWeight: FontWeight.w800,
-          color: AppColors.primary,
-        ),
-      ),
-    );
-  }
-}
-
 class SoloPlace {
+  final String id;
   final String name;
   final String category;
   final String group;
@@ -1662,8 +2105,10 @@ class SoloPlace {
   final List<String> tags;
   final IconData icon;
   final Color color;
+  final double baseScore;
 
   const SoloPlace({
+    required this.id,
     required this.name,
     required this.category,
     required this.group,
@@ -1674,6 +2119,7 @@ class SoloPlace {
     required this.tags,
     required this.icon,
     required this.color,
+    this.baseScore = 4.0,
   });
 }
 
@@ -1695,6 +2141,8 @@ const _foodCategories = [
 
 const _soloPlaces = [
   SoloPlace(
+    id: 'times-taco',
+    baseScore: 4.4,
     name: '\uD0C0\uC784\uC2A4\uD30C\uCF54',
     category: '\uBA55\uC2DC\uCF54 \uC591\uC2DD',
     group: '\uC591\uC2DD',
@@ -1712,6 +2160,8 @@ const _soloPlaces = [
     color: Color(0xFFF06B6B),
   ),
   SoloPlace(
+    id: 'hansot-dosirak',
+    baseScore: 4.2,
     name: '\uD55C\uC19F\uB3C4\uC2DC\uB77D',
     category: '\uD55C\uC2DD',
     group: '\uD55C\uC2DD',
@@ -1729,6 +2179,8 @@ const _soloPlaces = [
     color: Color(0xFFEF9F43),
   ),
   SoloPlace(
+    id: 'cupbap-lab',
+    baseScore: 4.5,
     name: '\uCEF5\uBC25\uC5F0\uAD6C\uC18C',
     category: '\uBD84\uC2DD \uCEF5\uBC25',
     group: '\uBD84\uC2DD',
@@ -1746,6 +2198,8 @@ const _soloPlaces = [
     color: Color(0xFF46A67E),
   ),
   SoloPlace(
+    id: 'gamdong-katsu',
+    baseScore: 4.3,
     name: '\uAC10\uB3D9\uAE4C\uC2A4',
     category: '\uB3C8\uAE4C\uC2A4',
     group: '\uC77C\uC2DD',
@@ -1763,6 +2217,8 @@ const _soloPlaces = [
     color: Color(0xFF6A8DFF),
   ),
   SoloPlace(
+    id: 'gyodong-jjamppong',
+    baseScore: 4.0,
     name: '\uBA85\uAC00\uAD50\uB3D9\uC9EC\uBF55',
     category: '\uC911\uC2DD',
     group: '\uC911\uC2DD',
@@ -1780,6 +2236,8 @@ const _soloPlaces = [
     color: Color(0xFFD94F4F),
   ),
   SoloPlace(
+    id: 'my-chicken',
+    baseScore: 4.1,
     name: '\uB9C8\uC774\uCE58\uD0A8',
     category: '\uCE58\uD0A8',
     group: '\uCE58\uD0A8',
@@ -1827,4 +2285,11 @@ IconData _categoryIcon(String category) {
     '\uB514\uC800\uD2B8' => Icons.icecream_rounded,
     _ => Icons.restaurant_rounded,
   };
+}
+
+bool _isPastMeeting(MeetingModel meeting) {
+  if (meeting.status == MeetingStatus.completed) return true;
+  final today = DateUtils.dateOnly(DateTime.now());
+  final meetingDay = DateUtils.dateOnly(meeting.meetingTime);
+  return meetingDay.isBefore(today);
 }
