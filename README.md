@@ -1,3 +1,4 @@
 # 밥구구
 
-A new Flutter project.
+A mobile app for students
+
