@@ -4,7 +4,7 @@ This folder contains the BabGuGu Supabase database and storage setup.
 
 ## Automated deployment
 
-GitHub Actions runs the files in `supabase/migrations` with `supabase db push`.
+GitHub Actions runs the files in `supabase/migrations` with `supabase db push` when `supabase/**` changes are pushed to `main` or `master`.
 Only safe, idempotent schema changes belong in `migrations`.
 
 Required GitHub repository secrets:
