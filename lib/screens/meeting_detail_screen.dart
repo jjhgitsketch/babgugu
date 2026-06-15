@@ -135,7 +135,23 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
     }
   }
 
+  bool get _canOpenBaeminTogether =>
+      _isJoined || widget.meeting.hostId == SupabaseService.userId;
+
+  void _showJoinRequiredForBaemin() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+            '\uBAA8\uC784\uC5D0 \uCC38\uC5EC\uD55C \uC0AC\uB78C\uB9CC \uBC30\uBBFC \uD568\uAED8\uC8FC\uBB38\uC744 \uC774\uC6A9\uD560 \uC218 \uC788\uC5B4\uC694.'),
+      ),
+    );
+  }
+
   Future<void> _openBaeminTogether(String rawUrl) async {
+    if (!_canOpenBaeminTogether) {
+      _showJoinRequiredForBaemin();
+      return;
+    }
     final trimmed = rawUrl.trim();
     if (trimmed.isEmpty) return;
     final url = trimmed.startsWith('http://') || trimmed.startsWith('https://')
@@ -281,8 +297,9 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
                             width: double.infinity,
                             height: 43,
                             child: ElevatedButton.icon(
-                              onPressed: () =>
-                                  _openBaeminTogether(baeminTogetherUrl),
+                              onPressed: _canOpenBaeminTogether
+                                  ? () => _openBaeminTogether(baeminTogetherUrl)
+                                  : _showJoinRequiredForBaemin,
                               icon: const Icon(Icons.open_in_new_rounded,
                                   size: 17),
                               label: const Text('배민 함께주문 들어가기'),

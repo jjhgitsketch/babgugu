@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/models.dart';
+import '../navigation/app_tab_events.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 import 'public_profile_screen.dart';
@@ -26,19 +27,24 @@ class _ChatScreenState extends State<ChatScreen> {
   final _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
   RealtimeChannel? _channel;
+  RealtimeChannel? _meetingChannel;
   bool _loading = true;
   bool _sending = false;
+  bool _leavingCompletedRoom = false;
+  bool _completingMeeting = false;
 
   @override
   void initState() {
     super.initState();
     _loadMessages();
     _subscribeRealtime();
+    _subscribeMeetingStatus();
   }
 
   @override
   void dispose() {
     _channel?.unsubscribe();
+    _meetingChannel?.unsubscribe();
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -70,6 +76,32 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  void _subscribeMeetingStatus() {
+    _meetingChannel = SupabaseService.subscribeMeetingStatus(
+      widget.meeting.id,
+      (status) {
+        if (!mounted) return;
+        if (widget.meeting.status != status) {
+          setState(() => widget.meeting.status = status);
+        }
+        if (status == MeetingStatus.completed && !_completingMeeting) {
+          _leaveCompletedChat();
+        }
+      },
+    );
+  }
+
+  void _leaveCompletedChat() {
+    if (_leavingCompletedRoom || !mounted) return;
+    _leavingCompletedRoom = true;
+    _controller.clear();
+    AppTabEvents.goHome();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    });
+  }
+
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
@@ -84,6 +116,11 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _sendMessage({String? text, String type = 'text'}) async {
     final messageText = (text ?? _controller.text).trim();
     if (messageText.isEmpty || _sending) return;
+    if (widget.meeting.status == MeetingStatus.completed && type == 'text') {
+      _showSnackBar(
+          '\uC644\uB8CC\uB41C \uBAA8\uC784\uC5D0\uC11C\uB294 \uCC44\uD305\uD560 \uC218 \uC5C6\uC5B4\uC694.');
+      return;
+    }
 
     setState(() {
       _sending = true;
@@ -158,6 +195,7 @@ class _ChatScreenState extends State<ChatScreen> {
       _showSnackBar('모임장만 모임을 완료할 수 있어요.');
       return;
     }
+    _completingMeeting = true;
     try {
       await SupabaseService.completeMeeting(widget.meeting.id);
       if (!mounted) return;
@@ -167,7 +205,9 @@ class _ChatScreenState extends State<ChatScreen> {
             '\uC624\uB298 \uBAA8\uC784\uC774 \uC644\uB8CC\uB418\uC5C8\uC5B4\uC694!',
         type: 'system',
       );
+      _leaveCompletedChat();
     } catch (e) {
+      _completingMeeting = false;
       _showSnackBar('모임 완료에 실패했어요: $e');
     }
   }
@@ -256,24 +296,64 @@ class _ChatScreenState extends State<ChatScreen> {
                     },
                   ),
           ),
-          _QuickActions(
-            isHost: widget.meeting.hostId == SupabaseService.userId,
-            status: widget.meeting.status,
-            hasBaeminTogetherUrl:
-                (widget.meeting.baeminTogetherUrl?.trim().isNotEmpty ?? false),
-            onRandomPick: _sendRandomPick,
-            onStart: _markMeetingStarted,
-            onComplete: _markMeetingComplete,
-            onSettlement: _openSettlementRequest,
-            onBaeminTogether: _openBaeminTogether,
-          ),
-          _InputBar(
-            controller: _controller,
-            sending: _sending,
-            onSubmitted: (_) => _sendMessage(),
-            onSend: () => _sendMessage(),
-          ),
+          if (widget.meeting.status == MeetingStatus.completed)
+            const _CompletedChatFooter()
+          else ...[
+            _QuickActions(
+              isHost: widget.meeting.hostId == SupabaseService.userId,
+              status: widget.meeting.status,
+              hasBaeminTogetherUrl:
+                  (widget.meeting.baeminTogetherUrl?.trim().isNotEmpty ??
+                      false),
+              onRandomPick: _sendRandomPick,
+              onStart: _markMeetingStarted,
+              onComplete: _markMeetingComplete,
+              onSettlement: _openSettlementRequest,
+              onBaeminTogether: _openBaeminTogether,
+            ),
+            _InputBar(
+              controller: _controller,
+              sending: _sending,
+              onSubmitted: (_) => _sendMessage(),
+              onSend: () => _sendMessage(),
+            ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+class _CompletedChatFooter extends StatelessWidget {
+  const _CompletedChatFooter();
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: Color(0xFFDADADA))),
+        ),
+        child: Container(
+          height: 42,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: AppColors.primaryBg,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Text(
+            '\uC644\uB8CC\uB41C \uBAA8\uC784\uC774\uC5D0\uC694',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: AppColors.primary,
+            ),
+          ),
+        ),
       ),
     );
   }

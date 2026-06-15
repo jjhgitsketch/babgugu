@@ -711,6 +711,32 @@ class SupabaseService {
   }
 
   // ─── 일치도 계산 ───
+
+  static RealtimeChannel subscribeMeetingStatus(
+    String meetingId,
+    void Function(MeetingStatus) onStatusChanged,
+  ) {
+    return _client
+        .channel('meeting_status_$meetingId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'meetings',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: meetingId,
+          ),
+          callback: (payload) {
+            final status = MeetingStatusX.fromDb(
+              payload.newRecord['status'] as String?,
+            );
+            onStatusChanged(status);
+          },
+        )
+        .subscribe();
+  }
+
   static int calcMatch(List<String> myTags, List<String> meetingTags) {
     if (myTags.isEmpty || meetingTags.isEmpty) return 0;
     final matches = myTags.where((t) => meetingTags.contains(t)).length;

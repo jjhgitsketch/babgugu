@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/models.dart';
+import '../navigation/app_tab_events.dart';
 import '../services/notification_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
@@ -28,6 +29,7 @@ class _MainScreenState extends State<MainScreen> {
   @override
   void initState() {
     super.initState();
+    AppTabEvents.homeRedirectTick.addListener(_handleHomeRedirect);
     _startNotifications();
   }
 
@@ -38,8 +40,18 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   void dispose() {
+    AppTabEvents.homeRedirectTick.removeListener(_handleHomeRedirect);
     NotificationService.instance.stopListening();
     super.dispose();
+  }
+
+  void _handleHomeRedirect() {
+    if (!mounted) return;
+    setState(() {
+      _visited.add(0);
+      _index = 0;
+    });
+    _startNotifications();
   }
 
   void _onTabTap(int index) {
