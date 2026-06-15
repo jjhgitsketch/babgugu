@@ -1,5 +1,7 @@
 // lib/models/models.dart
 
+import '../utils/time_utils.dart';
+
 class UserModel {
   final String id;
   final String name;
@@ -95,7 +97,7 @@ class UserModel {
         studentVerified: json['student_verified'] as bool? ?? false,
         studentVerifiedAt: json['student_verified_at'] == null
             ? null
-            : DateTime.parse(json['student_verified_at'] as String),
+            : parseSupabaseServerTime(json['student_verified_at']),
       );
 }
 
@@ -199,10 +201,10 @@ class MeetingModel {
         location: json['location'] as String? ?? '',
         hostId: json['host_id'] as String? ?? '',
         hostName: json['host_name'] as String? ?? '',
-        createdAt: DateTime.parse(json['created_at'] as String),
+        createdAt: parseSupabaseServerTime(json['created_at']),
         scheduledAt: json['scheduled_at'] == null
             ? null
-            : DateTime.parse(json['scheduled_at'] as String),
+            : parseSupabaseLocalTime(json['scheduled_at']),
         category: json['category'] as String?,
         latitude: (json['latitude'] as num?)?.toDouble(),
         longitude: (json['longitude'] as num?)?.toDouble(),
@@ -301,7 +303,7 @@ class ChatMessage {
         senderId: json['sender_id'] as String? ?? '',
         senderName: json['sender_name'] as String? ?? '',
         text: json['text'] as String,
-        time: DateTime.parse(json['created_at'] as String).toLocal(),
+        time: parseSupabaseServerTime(json['created_at']),
         isMe: json['sender_id'] == myId,
         type: json['type'] == 'dutchPay'
             ? MessageType.dutchPay
@@ -312,6 +314,31 @@ class ChatMessage {
 }
 
 enum MessageType { text, dutchPay, system }
+
+class BalanceGameState {
+  final String gameDate;
+  final String? myChoice;
+  final int optionACount;
+  final int optionBCount;
+
+  const BalanceGameState({
+    required this.gameDate,
+    required this.myChoice,
+    required this.optionACount,
+    required this.optionBCount,
+  });
+
+  int get totalCount => optionACount + optionBCount;
+  bool get hasVoted => myChoice == 'a' || myChoice == 'b';
+
+  double ratioFor(String choice) {
+    if (totalCount == 0) return 0;
+    final count = choice == 'a' ? optionACount : optionBCount;
+    return count / totalCount;
+  }
+
+  int percentFor(String choice) => (ratioFor(choice) * 100).round();
+}
 
 UserModel? currentUser;
 

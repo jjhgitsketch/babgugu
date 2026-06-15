@@ -16,7 +16,13 @@ class ExploreScreen extends StatefulWidget {
 
 class _ExploreScreenState extends State<ExploreScreen> {
   static const _sortOptions = ['최신순', '추천순', '가까운 일정순', '인원 여유순'];
-  static const _filterOptions = ['전체 장소', '1인 식당', '진행 중 모임'];
+  static const _filterOptions = [
+    '\uC804\uCCB4 \uC7A5\uC18C',
+    '\uC2DD\uB2F9',
+    '\uBC30\uB2EC',
+    '1\uC778 \uC2DD\uB2F9',
+    '\uC9C4\uD589 \uC911 \uBAA8\uC784',
+  ];
 
   List<MeetingModel> _all = [];
   bool _loading = true;
@@ -66,13 +72,21 @@ class _ExploreScreenState extends State<ExploreScreen> {
       }).toList();
     }
 
-    if (_filter == '1인 식당') {
+    if (_filter == '\uC2DD\uB2F9') {
+      list = list
+          .where((meeting) => meeting.type == MeetingType.restaurant)
+          .toList();
+    } else if (_filter == '\uBC30\uB2EC') {
+      list = list
+          .where((meeting) => meeting.type == MeetingType.delivery)
+          .toList();
+    } else if (_filter == '1\uC778 \uC2DD\uB2F9') {
       list = list.where((meeting) {
         return meeting.maxMembers <= 2 ||
-            meeting.tags.any((tag) => tag.contains('혼밥')) ||
-            meeting.title.contains('혼밥');
+            meeting.tags.any((tag) => tag.contains('\uD63C\uBC25')) ||
+            meeting.title.contains('\uD63C\uBC25');
       }).toList();
-    } else if (_filter == '진행 중 모임') {
+    } else if (_filter == '\uC9C4\uD589 \uC911 \uBAA8\uC784') {
       list = list
           .where((meeting) => meeting.currentMembers < meeting.maxMembers)
           .toList();
@@ -359,8 +373,10 @@ class _ExploreFilterRow extends StatelessWidget {
           final value = _ExploreScreenState._filterOptions[index];
           final active = selected == value;
           final icon = switch (value) {
-            '전체 장소' => Icons.explore_rounded,
-            '1인 식당' => Icons.person_rounded,
+            '\uC804\uCCB4 \uC7A5\uC18C' => Icons.explore_rounded,
+            '\uC2DD\uB2F9' => Icons.restaurant_rounded,
+            '\uBC30\uB2EC' => Icons.delivery_dining_rounded,
+            '1\uC778 \uC2DD\uB2F9' => Icons.person_rounded,
             _ => Icons.groups_rounded,
           };
           return GestureDetector(
@@ -378,7 +394,7 @@ class _ExploreFilterRow extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(icon,
-                      size: value == '전체 장소' ? 14 : 12,
+                      size: value == '\uC804\uCCB4 \uC7A5\uC18C' ? 14 : 12,
                       color: active ? Colors.white : const Color(0xFF444EF8)),
                   const SizedBox(width: 3),
                   Flexible(

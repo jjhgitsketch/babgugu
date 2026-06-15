@@ -242,6 +242,13 @@ create table if not exists public.solo_place_reviews (
   updated_at timestamptz default now(),
   unique (place_id, user_id)
 );
+create table if not exists public.balance_game_votes (
+  game_date date not null,
+  user_id uuid not null references public.users(id) on delete cascade,
+  choice text not null check (choice in ('a', 'b')),
+  created_at timestamptz not null default now(),
+  primary key (game_date, user_id)
+);
 
 create index if not exists users_school_email_idx on public.users (school_email);
 create index if not exists student_email_verifications_lookup_idx on public.student_email_verifications (user_id, email, created_at desc);
@@ -261,6 +268,7 @@ create index if not exists notifications_user_id_idx on public.notifications(use
 create index if not exists trust_reviews_reviewed_user_id_idx on public.trust_reviews(reviewed_user_id);
 create index if not exists solo_place_reviews_place_id_idx on public.solo_place_reviews(place_id);
 create index if not exists solo_place_reviews_user_id_idx on public.solo_place_reviews(user_id);
+create index if not exists balance_game_votes_game_date_idx on public.balance_game_votes(game_date);
 
 -- Realtime publications used by the app.
 do $$
@@ -320,6 +328,7 @@ alter table public.trust_reviews disable row level security;
 
 alter table public.student_email_verifications enable row level security;
 alter table public.solo_place_reviews enable row level security;
+alter table public.balance_game_votes enable row level security;
 
 drop policy if exists "Solo place reviews are readable" on public.solo_place_reviews;
 drop policy if exists "Users can create their own solo place reviews" on public.solo_place_reviews;
@@ -342,4 +351,18 @@ on public.solo_place_reviews
 for update
 to authenticated
 using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+drop policy if exists "Balance game votes are readable" on public.balance_game_votes;
+drop policy if exists "Users can create their own balance game vote" on public.balance_game_votes;
+
+create policy "Balance game votes are readable"
+on public.balance_game_votes
+for select
+to authenticated
+using (true);
+
+create policy "Users can create their own balance game vote"
+on public.balance_game_votes
+for insert
+to authenticated
 with check (auth.uid() = user_id);

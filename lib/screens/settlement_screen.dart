@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../models/models.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/time_utils.dart';
 import 'review_screen.dart';
 
 class SettlementScreen extends StatefulWidget {
@@ -113,7 +114,7 @@ class _SettlementScreenState extends State<SettlementScreen> {
       _savedReceiptImageUrl = state['memo'] as String?;
       final createdAt = state['created_at'] as String?;
       if (createdAt != null) {
-        _requestedAt = DateTime.tryParse(createdAt)?.toLocal() ?? _requestedAt;
+        _requestedAt = parseSupabaseServerTime(createdAt);
       }
       if (members.isNotEmpty) _members = members;
     });

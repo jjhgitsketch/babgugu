@@ -2,6 +2,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/models.dart';
+import '../utils/time_utils.dart';
 
 class SupabaseService {
   static final _client = Supabase.instance.client;
@@ -86,7 +87,7 @@ class SupabaseService {
         data is Map ? data['student_verified_at'] as String? : null;
     final verifiedAt = verifiedAtText == null
         ? DateTime.now()
-        : DateTime.parse(verifiedAtText).toLocal();
+        : parseSupabaseServerTime(verifiedAtText);
     final updated = user.copyWith(
       schoolEmail: email,
       studentVerified: true,
@@ -490,6 +491,50 @@ class SupabaseService {
       'score': normalizedScore,
       'comment': comment,
     }, onConflict: 'meeting_id,reviewer_id,reviewed_user_id');
+  }
+
+  static Future<BalanceGameState> getBalanceGameState(String gameDate) async {
+    try {
+      final data = await _client
+          .from('balance_game_votes')
+          .select('user_id, choice')
+          .eq('game_date', gameDate);
+      var optionACount = 0;
+      var optionBCount = 0;
+      String? myChoice;
+      for (final row in data as List) {
+        final choice = row['choice'] as String?;
+        if (choice == 'a') optionACount++;
+        if (choice == 'b') optionBCount++;
+        if (row['user_id'] == userId) myChoice = choice;
+      }
+      return BalanceGameState(
+        gameDate: gameDate,
+        myChoice: myChoice,
+        optionACount: optionACount,
+        optionBCount: optionBCount,
+      );
+    } catch (e) {
+      debugPrint('[SupabaseService] getBalanceGameState error: $e');
+      return BalanceGameState(
+        gameDate: gameDate,
+        myChoice: null,
+        optionACount: 0,
+        optionBCount: 0,
+      );
+    }
+  }
+
+  static Future<void> submitBalanceGameVote({
+    required String gameDate,
+    required String choice,
+  }) async {
+    if (userId == 'anonymous') return;
+    await _client.from('balance_game_votes').insert({
+      'game_date': gameDate,
+      'user_id': userId,
+      'choice': choice,
+    });
   }
 
   static Future<Map<String, SoloPlaceScore>> getSoloPlaceScores(

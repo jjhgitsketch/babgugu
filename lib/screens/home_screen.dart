@@ -1137,11 +1137,331 @@ class _SoloRecommendationPanel extends StatelessWidget {
                   _SoloPlaceCard(place: _soloPlaces[index]),
             ),
           ),
+          const SizedBox(height: 24),
+          const Padding(
+            padding: EdgeInsets.only(right: 20),
+            child: _DailyBalanceGameCard(),
+          ),
         ],
       ),
     );
   }
 }
+
+class _DailyBalanceGameCard extends StatefulWidget {
+  const _DailyBalanceGameCard();
+
+  @override
+  State<_DailyBalanceGameCard> createState() => _DailyBalanceGameCardState();
+}
+
+class _DailyBalanceGameCardState extends State<_DailyBalanceGameCard> {
+  BalanceGameState? _state;
+  bool _loading = true;
+  bool _voting = false;
+
+  late final DateTime _kstToday = DateTime.now().toUtc().add(
+        const Duration(hours: 9),
+      );
+  late final String _gameDate = _dateKey(_kstToday);
+  late final _BalanceQuestion _question = _questionFor(_kstToday);
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final state = await SupabaseService.getBalanceGameState(_gameDate);
+    if (!mounted) return;
+    setState(() {
+      _state = state;
+      _loading = false;
+    });
+  }
+
+  Future<void> _vote(String choice) async {
+    if (_voting || (_state?.hasVoted ?? false)) return;
+    setState(() => _voting = true);
+    try {
+      await SupabaseService.submitBalanceGameVote(
+        gameDate: _gameDate,
+        choice: choice,
+      );
+      await _load();
+    } catch (_) {
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              '\uC774\uBBF8 \uC624\uB298\uC758 \uBC38\uB7F0\uC2A4 \uAC8C\uC784\uC5D0 \uD22C\uD45C\uD588\uC5B4\uC694.'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _voting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = _state;
+    final hasVoted = state?.hasVoted ?? false;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 15, 16, 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE5E5E5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.balance_rounded,
+                  size: 21, color: AppColors.primary),
+              const SizedBox(width: 6),
+              const Expanded(
+                child: Text(
+                  '\uC624\uB298\uC758 \uBC25 \uBC38\uB7F0\uC2A4',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryBg,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+                child: const Text(
+                  '24H',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          Text(
+            _question.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 14,
+              height: 1.25,
+              color: Color(0xFF555555),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 13),
+          if (_loading)
+            const SizedBox(
+              height: 88,
+              child: Center(
+                child: CircularProgressIndicator(
+                  color: AppColors.primary,
+                  strokeWidth: 2,
+                ),
+              ),
+            )
+          else
+            Row(
+              children: [
+                Expanded(
+                  child: _BalanceOptionButton(
+                    label: _question.optionA,
+                    icon: _question.iconA,
+                    selected: state?.myChoice == 'a',
+                    voted: hasVoted,
+                    percent: state?.percentFor('a') ?? 0,
+                    count: state?.optionACount ?? 0,
+                    onTap: () => _vote('a'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _BalanceOptionButton(
+                    label: _question.optionB,
+                    icon: _question.iconB,
+                    selected: state?.myChoice == 'b',
+                    voted: hasVoted,
+                    percent: state?.percentFor('b') ?? 0,
+                    count: state?.optionBCount ?? 0,
+                    onTap: () => _vote('b'),
+                  ),
+                ),
+              ],
+            ),
+          const SizedBox(height: 10),
+          Text(
+            hasVoted
+                ? '\uC804\uCCB4 ${state?.totalCount ?? 0}\uBA85 \uCC38\uC5EC'
+                : '\uD55C \uBC88 \uC120\uD0DD\uD558\uBA74 \uC624\uB298\uC740 \uBC14\uAFC0 \uC218 \uC5C6\uC5B4\uC694.',
+            style: const TextStyle(
+              fontSize: 11,
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _dateKey(DateTime date) {
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '${date.year}-$month-$day';
+  }
+
+  static _BalanceQuestion _questionFor(DateTime date) {
+    final index = (date.year * 10000 + date.month * 100 + date.day) %
+        _balanceQuestions.length;
+    return _balanceQuestions[index];
+  }
+}
+
+class _BalanceOptionButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final bool voted;
+  final int percent;
+  final int count;
+  final VoidCallback onTap;
+
+  const _BalanceOptionButton({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.voted,
+    required this.percent,
+    required this.count,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: voted ? null : onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        height: 88,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primaryBg : const Color(0xFFFFF5F5),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selected ? AppColors.primary : const Color(0xFFE9D7D7),
+            width: selected ? 1.4 : 1,
+          ),
+        ),
+        child: Stack(
+          children: [
+            if (voted)
+              FractionallySizedBox(
+                widthFactor: percent.clamp(0, 100) / 100,
+                heightFactor: 1,
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  color: AppColors.primary.withValues(alpha: 0.14),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, color: AppColors.primary, size: 24),
+                  const SizedBox(height: 6),
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  if (voted) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      '$percent% · $count\uBA85',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BalanceQuestion {
+  final String title;
+  final String optionA;
+  final String optionB;
+  final IconData iconA;
+  final IconData iconB;
+
+  const _BalanceQuestion({
+    required this.title,
+    required this.optionA,
+    required this.optionB,
+    required this.iconA,
+    required this.iconB,
+  });
+}
+
+const _balanceQuestions = [
+  _BalanceQuestion(
+    title: '\uD55C \uAC00\uC9C0\uB9CC \uBA39\uC744 \uC218 \uC788\uB2E4\uBA74?',
+    optionA: '\uB77C\uBA74',
+    optionB: '\uAE40\uBC25',
+    iconA: Icons.ramen_dining_rounded,
+    iconB: Icons.rice_bowl_rounded,
+  ),
+  _BalanceQuestion(
+    title: '\uCE5C\uAD6C\uC640 \uD55C \uB07C\uB97C \uBA39\uB294\uB2E4\uBA74?',
+    optionA: '\uCE58\uD0A8',
+    optionB: '\uD53C\uC790',
+    iconA: Icons.set_meal_rounded,
+    iconB: Icons.local_pizza_rounded,
+  ),
+  _BalanceQuestion(
+    title: '\uC624\uB298 \uD63C\uBC25\uC744 \uD55C\uB2E4\uBA74?',
+    optionA: '\uB5A1\uBCF6\uC774',
+    optionB: '\uB3C8\uAE4C\uC2A4',
+    iconA: Icons.local_fire_department_rounded,
+    iconB: Icons.lunch_dining_rounded,
+  ),
+  _BalanceQuestion(
+    title:
+        '\uB9E4\uC77C \uBA39\uC5B4\uB3C4 \uC548 \uC9C8\uB9AC\uB294 \uBC25\uC740?',
+    optionA: '\uC81C\uC721',
+    optionB: '\uB41C\uC7A5\uCC0C\uAC1C',
+    iconA: Icons.restaurant_rounded,
+    iconB: Icons.soup_kitchen_rounded,
+  ),
+];
 
 class _MenuRecommendCard extends StatelessWidget {
   final String label;
