@@ -20,6 +20,7 @@ class SupabaseService {
       'university': user.university,
       'department': user.department,
       'student_id': user.studentId,
+      'gender': user.gender,
       'school_email': user.schoolEmail,
       'student_verified': user.studentVerified,
       'student_verified_at': user.studentVerifiedAt?.toIso8601String(),
@@ -458,6 +459,22 @@ class SupabaseService {
     }
   }
 
+  static Future<bool> hasSubmittedTrustReview(String meetingId) async {
+    if (userId == 'anonymous') return false;
+    try {
+      final data = await _client
+          .from('trust_reviews')
+          .select('reviewed_user_id')
+          .eq('meeting_id', meetingId)
+          .eq('reviewer_id', userId)
+          .limit(1);
+      return (data as List).isNotEmpty;
+    } catch (e) {
+      debugPrint('[SupabaseService] hasSubmittedTrustReview error: $e');
+      return false;
+    }
+  }
+
   static Future<void> submitTrustReview({
     required String meetingId,
     required String reviewedUserId,
@@ -525,6 +542,111 @@ class SupabaseService {
   }
 
   // ─── 채팅 메시지 불러오기 ───
+
+  static Future<String> createSettlement({
+    required String meetingId,
+    required int totalAmount,
+    required int perPersonAmount,
+    required String bankInfo,
+    String? receiptImageUrl,
+    required List<Map<String, dynamic>> members,
+  }) async {
+    final settlement = await _client
+        .from('settlements')
+        .insert({
+          'meeting_id': meetingId,
+          'requester_id': userId == 'anonymous' ? null : userId,
+          'total_amount': totalAmount,
+          'per_person_amount': perPersonAmount,
+          'bank_info': bankInfo,
+          'memo': receiptImageUrl,
+          'status': 'requested',
+        })
+        .select('id')
+        .single();
+
+    final settlementId = settlement['id'] as String;
+    final memberRows = members
+        .where((member) => (member['user_id'] as String?)?.isNotEmpty == true)
+        .map((member) => {
+              'settlement_id': settlementId,
+              'user_id': member['user_id'],
+              'user_name': member['user_name'],
+              'amount': member['amount'] ?? perPersonAmount,
+              'status': 'requested',
+            })
+        .toList();
+
+    if (memberRows.isNotEmpty) {
+      await _client.from('settlement_members').insert(memberRows);
+    }
+
+    return settlementId;
+  }
+
+  static Future<Map<String, dynamic>?> getSettlementState({
+    String? settlementId,
+    required String meetingId,
+  }) async {
+    try {
+      Map<String, dynamic>? settlement;
+      if (settlementId != null && settlementId.trim().isNotEmpty) {
+        final data = await _client
+            .from('settlements')
+            .select()
+            .eq('id', settlementId)
+            .maybeSingle();
+        if (data != null) settlement = Map<String, dynamic>.from(data);
+      }
+
+      if (settlement == null) {
+        final rows = await _client
+            .from('settlements')
+            .select()
+            .eq('meeting_id', meetingId)
+            .order('created_at', ascending: false)
+            .limit(1);
+        if ((rows as List).isEmpty) return null;
+        settlement = Map<String, dynamic>.from(rows.first as Map);
+      }
+
+      final members = await _client
+          .from('settlement_members')
+          .select(
+              'settlement_id, user_id, user_name, amount, status, paid_at, confirmed_at')
+          .eq('settlement_id', settlement['id'])
+          .order('user_name', ascending: true);
+      settlement['members'] = List<Map<String, dynamic>>.from(members as List);
+      return settlement;
+    } catch (e) {
+      debugPrint('[SupabaseService] getSettlementState error: $e');
+      return null;
+    }
+  }
+
+  static Future<void> updateSettlementMemberStatus({
+    required String settlementId,
+    required String memberUserId,
+    required String status,
+  }) async {
+    final now = DateTime.now().toIso8601String();
+    final values = <String, dynamic>{'status': status};
+    if (status == 'paid') values['paid_at'] = now;
+    if (status == 'confirmed') values['confirmed_at'] = now;
+
+    await _client.from('settlement_members').update(values).match({
+      'settlement_id': settlementId,
+      'user_id': memberUserId,
+    });
+  }
+
+  static Future<void> completeSettlement(String settlementId) async {
+    await _client.from('settlements').update({
+      'status': 'completed',
+      'completed_at': DateTime.now().toIso8601String(),
+    }).eq('id', settlementId);
+  }
+
   static Future<List<Map<String, dynamic>>> getMeetingMembers(
     String meetingId,
   ) async {

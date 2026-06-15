@@ -6,6 +6,7 @@ import '../models/models.dart';
 import '../services/notification_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/meeting_image.dart';
 import 'chat_screen.dart';
 import 'public_profile_screen.dart';
 
@@ -376,18 +377,12 @@ class _HeroSummary extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          Container(
-            height: 372,
+          MeetingImage(
+            meeting: meeting,
             width: double.infinity,
-            decoration: BoxDecoration(
-              color: isDelivery ? const Color(0xFFFFF0EF) : AppColors.primary,
-            ),
-            child: Center(
-              child: Text(
-                isDelivery ? '배달' : '식당',
-                style: const TextStyle(fontSize: 116),
-              ),
-            ),
+            height: 372,
+            fallbackColor: AppColors.primary,
+            showFallbackIcon: false,
           ),
           SafeArea(
             bottom: false,

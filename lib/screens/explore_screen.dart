@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/meeting_image.dart';
 import 'map/map_interface.dart';
 import 'meeting_detail_screen.dart';
 
@@ -430,16 +431,13 @@ class _ExploreMeetingRow extends StatelessWidget {
         height: 128,
         child: Row(
           children: [
-            Container(
+            MeetingImage(
+              meeting: meeting,
               width: 105,
               height: 118,
-              decoration: BoxDecoration(
-                color: _imageColors[imageIndex % _imageColors.length],
-                borderRadius: BorderRadius.circular(13),
-              ),
-              alignment: Alignment.center,
-              child: Icon(_meetingIcon(meeting),
-                  size: 42, color: AppColors.primary),
+              borderRadius: BorderRadius.circular(13),
+              fallbackColor: _imageColors[imageIndex % _imageColors.length],
+              iconSize: 42,
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -513,29 +511,6 @@ class _ExploreMeetingRow extends StatelessWidget {
       ),
     );
   }
-}
-
-IconData _meetingIcon(MeetingModel meeting) {
-  final text =
-      '${meeting.title} ${meeting.category ?? ''} ${meeting.tags.join(' ')}';
-  if (text.contains('초밥') || text.contains('일식')) {
-    return Icons.set_meal_rounded;
-  }
-  if (text.contains('마라') || text.contains('중식')) {
-    return Icons.ramen_dining_rounded;
-  }
-  if (text.contains('파스타') || text.contains('양식')) {
-    return Icons.local_pizza_rounded;
-  }
-  if (text.contains('감자탕') || text.contains('찌개')) {
-    return Icons.soup_kitchen_rounded;
-  }
-  if (text.contains('햄버거') || text.contains('샌드위치')) {
-    return Icons.lunch_dining_rounded;
-  }
-  return meeting.type == MeetingType.delivery
-      ? Icons.delivery_dining_rounded
-      : Icons.restaurant_rounded;
 }
 
 String _tagLine(List<String> tags) {

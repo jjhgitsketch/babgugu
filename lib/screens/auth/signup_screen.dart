@@ -52,6 +52,9 @@ class _SignupScreenState extends State<SignupScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
+
+      if (!mounted) return;
+      Navigator.of(context).pop();
       // 회원가입 성공 → _AuthGate의 onAuthStateChange가 자동으로 온보딩으로 이동
       // 별도 Navigator 불필요
     } on AuthException catch (e) {

@@ -122,6 +122,7 @@ class _ChatScreenState extends State<ChatScreen> {
     await _sendMessage(
       text: [
         'settlement_request',
+        'settlement_id:${result.settlementId}',
         'total:${result.totalAmount}',
         'per_person:${result.perPersonAmount}',
         'bank:$bankInfo',
@@ -143,7 +144,8 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       setState(() => widget.meeting.status = MeetingStatus.started);
       await _sendMessage(
-        text: '모임이 시작되었어요.\n이제 신규 참여자는 들어올 수 없어요.',
+        text:
+            '\uBAA8\uC784\uC774 \uC2DC\uC791\uB418\uC5C8\uC5B4\uC694.\n\uC774\uC81C \uC2E0\uADDC \uCC38\uC5EC\uC790\uB294 \uB4E4\uC5B4\uC62C \uC218 \uC5C6\uC5B4\uC694.',
         type: 'system',
       );
     } catch (e) {
@@ -161,7 +163,8 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       setState(() => widget.meeting.status = MeetingStatus.completed);
       await _sendMessage(
-        text: '오늘 모임이 완료되었어요!\n모임장은 정산을 진행해주세요',
+        text:
+            '\uC624\uB298 \uBAA8\uC784\uC774 \uC644\uB8CC\uB418\uC5C8\uC5B4\uC694!',
         type: 'system',
       );
     } catch (e) {
@@ -246,10 +249,9 @@ class _ChatScreenState extends State<ChatScreen> {
                       return _MessageBubble(
                         message: _messages[index],
                         meeting: widget.meeting,
-                        onSettlementCompleted: () => _sendMessage(
-                          text: '정산이 완료되었어요.\n모임 평가까지 모두 마쳤습니다.',
-                          type: 'system',
-                        ),
+                        onSettlementCompleted: () async {
+                          if (mounted) setState(() {});
+                        },
                       );
                     },
                   ),
@@ -590,17 +592,12 @@ class _CompletionNotice extends StatelessWidget {
           child: const Column(
             children: [
               Text(
-                '오늘 모임이 완료되었어요!',
+                '\uC624\uB298 \uBAA8\uC784\uC774 \uC644\uB8CC\uB418\uC5C8\uC5B4\uC694!',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
                   color: AppColors.primary,
                 ),
-              ),
-              SizedBox(height: 5),
-              Text(
-                '모임장은 정산을 진행해주세요',
-                style: TextStyle(fontSize: 13, color: Colors.black),
               ),
             ],
           ),
@@ -627,108 +624,176 @@ class _SettlementRequestBubble extends StatelessWidget {
     final settlement = _SettlementMessage.parse(message.text);
     final cardWidth = min(223.0, MediaQuery.sizeOf(context).width * 0.62);
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 22),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          _MessageTime(time: message.time),
-          const SizedBox(width: 6),
-          Container(
-            width: cardWidth,
-            padding: const EdgeInsets.fromLTRB(19, 30, 19, 19),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: const Color(0xFFDADADA)),
-            ),
-            child: Column(
-              children: [
-                const Text(
-                  '오늘 모임이 완료되었어요!',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+    return FutureBuilder<Map<String, dynamic>?>(
+      future: SupabaseService.getSettlementState(
+        settlementId: settlement.settlementId,
+        meetingId: meeting.id,
+      ),
+      builder: (context, snapshot) {
+        final state = snapshot.data;
+        final isChecking = snapshot.connectionState != ConnectionState.done;
+        final isCompleted = state?['status'] == 'completed';
+        final totalAmount =
+            (state?['total_amount'] as num?)?.toInt() ?? settlement.totalAmount;
+        final members = List<Map<String, dynamic>>.from(
+          (state?['members'] as List?) ?? const [],
+        );
+        final perPersonAmount = members.isNotEmpty
+            ? ((members.first['amount'] as num?)?.toInt() ??
+                settlement.perPersonAmount)
+            : settlement.perPersonAmount;
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 22),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _MessageTime(time: message.time),
+              const SizedBox(width: 6),
+              Container(
+                width: cardWidth,
+                padding: EdgeInsets.fromLTRB(19, 30, 19, isCompleted ? 22 : 19),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: const Color(0xFFDADADA)),
                 ),
-                const SizedBox(height: 12),
-                const Text(
-                  '1인 정산 비용',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '${_formatWon(settlement.perPersonAmount)}원',
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.primary,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Container(
-                    width: 110, height: 1, color: const Color(0xFFDADADA)),
-                const SizedBox(height: 15),
-                Text(
-                  '총 비용: ${_formatWon(settlement.totalAmount)}원',
-                  style:
-                      const TextStyle(fontSize: 11, color: Color(0xFF909090)),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  '서로의 신뢰를 위해 잊지 않게\n정산 금액을 확인해주세요',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 12, color: Colors.black),
-                ),
-                const SizedBox(height: 14),
-                SizedBox(
-                  width: double.infinity,
-                  height: 32,
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      final completed = await Navigator.push<bool>(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => SettlementScreen(
-                            meeting: meeting,
-                            isHost: meeting.hostId == SupabaseService.userId,
-                            totalAmount: settlement.totalAmount,
-                            bankInfo: settlement.bankInfo,
-                            receiptImageUrl: settlement.receiptImageUrl,
-                            memberNames: settlement.memberNames,
+                child: Column(
+                  children: [
+                    Text(
+                      isCompleted
+                          ? '\uC815\uC0B0\uC774 \uC644\uB8CC\uB418\uC5C8\uC5B4\uC694'
+                          : '\uC624\uB298 \uBAA8\uC784\uC774 \uC644\uB8CC\uB418\uC5C8\uC5B4\uC694!',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      '1\uC778 \uC815\uC0B0 \uBE44\uC6A9',
+                      style:
+                          TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${_formatWon(perPersonAmount)}\uC6D0',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Container(
+                      width: 110,
+                      height: 1,
+                      color: const Color(0xFFDADADA),
+                    ),
+                    const SizedBox(height: 15),
+                    Text(
+                      '\uCD1D \uBE44\uC6A9: ${_formatWon(totalAmount)}\uC6D0',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF909090),
+                      ),
+                    ),
+                    if (isCompleted) ...[
+                      const SizedBox(height: 14),
+                      Container(
+                        height: 32,
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: AppColors.primaryBg,
+                          borderRadius: BorderRadius.circular(99),
+                        ),
+                        child: const Text(
+                          '\uC815\uC0B0 \uC694\uC57D',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.primary,
                           ),
                         ),
-                      );
-                      if (completed == true &&
-                          meeting.hostId == SupabaseService.userId) {
-                        await onSettlementCompleted();
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
                       ),
-                      padding: EdgeInsets.zero,
-                    ),
-                    child: const Text(
-                      '확인하기',
-                      style:
-                          TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-                    ),
-                  ),
+                    ] else if (isChecking) ...[
+                      const SizedBox(height: 14),
+                      const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ] else ...[
+                      const SizedBox(height: 12),
+                      const Text(
+                        '\uC11C\uB85C\uC758 \uC2E0\uB8B0\uB97C \uC704\uD574 \uC787\uC9C0 \uC54A\uAC8C\n\uC815\uC0B0 \uAE08\uC561\uC744 \uD655\uC778\uD574\uC8FC\uC138\uC694',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 12, color: Colors.black),
+                      ),
+                      const SizedBox(height: 14),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 32,
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            final completed = await Navigator.push<bool>(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => SettlementScreen(
+                                  meeting: meeting,
+                                  isHost:
+                                      meeting.hostId == SupabaseService.userId,
+                                  settlementId: settlement.settlementId,
+                                  totalAmount: settlement.totalAmount,
+                                  bankInfo: settlement.bankInfo,
+                                  receiptImageUrl: settlement.receiptImageUrl,
+                                  memberNames: settlement.memberNames,
+                                ),
+                              ),
+                            );
+                            if (completed == true &&
+                                meeting.hostId == SupabaseService.userId) {
+                              await onSettlementCompleted();
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            padding: EdgeInsets.zero,
+                          ),
+                          child: const Text(
+                            '\uD655\uC778\uD558\uAE30',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
 
 class _SettlementMessage {
+  final String? settlementId;
   final int totalAmount;
   final int perPersonAmount;
   final String bankInfo;
@@ -736,6 +801,7 @@ class _SettlementMessage {
   final List<String> memberNames;
 
   const _SettlementMessage({
+    this.settlementId,
     required this.totalAmount,
     required this.perPersonAmount,
     required this.bankInfo,
@@ -744,6 +810,7 @@ class _SettlementMessage {
   });
 
   static _SettlementMessage parse(String text) {
+    String? settlementId;
     var total = 0;
     var perPerson = 0;
     var bankInfo = '신한은행 1000-000-000001';
@@ -752,7 +819,13 @@ class _SettlementMessage {
 
     for (final rawLine in text.split('\n')) {
       final line = rawLine.trim();
-      if (line.startsWith('total:')) {
+      if (line.startsWith('settlement_id:')) {
+        final parsedId = line.replaceFirst('settlement_id:', '').trim();
+        if (parsedId.isNotEmpty) settlementId = parsedId;
+      } else if (line.startsWith('id:')) {
+        final parsedId = line.replaceFirst('id:', '').trim();
+        if (parsedId.isNotEmpty) settlementId = parsedId;
+      } else if (line.startsWith('total:')) {
         total = int.tryParse(line.replaceFirst('total:', '').trim()) ?? total;
       } else if (line.startsWith('per_person:')) {
         perPerson = int.tryParse(line.replaceFirst('per_person:', '').trim()) ??
@@ -788,6 +861,7 @@ class _SettlementMessage {
     }
 
     return _SettlementMessage(
+      settlementId: settlementId,
       totalAmount: total,
       perPersonAmount: perPerson,
       bankInfo: bankInfo,

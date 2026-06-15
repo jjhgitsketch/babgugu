@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/meeting_image.dart';
 import 'meeting_detail_screen.dart';
 
 class SavedMeetingsScreen extends StatefulWidget {
@@ -191,23 +192,17 @@ class _SavedMeetingCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Container(
+            MeetingImage(
+              meeting: meeting,
               width: 104,
               height: double.infinity,
-              decoration: BoxDecoration(
-                color: isDelivery
-                    ? const Color(0xFFE9F2FF)
-                    : const Color(0xFFFFECE5),
-                borderRadius:
-                    const BorderRadius.horizontal(left: Radius.circular(13)),
+              borderRadius: const BorderRadius.horizontal(
+                left: Radius.circular(13),
               ),
-              child: Icon(
-                isDelivery
-                    ? Icons.delivery_dining_rounded
-                    : Icons.restaurant_rounded,
-                size: 42,
-                color: AppColors.primary,
-              ),
+              fallbackColor: isDelivery
+                  ? const Color(0xFFE9F2FF)
+                  : const Color(0xFFFFECE5),
+              iconSize: 42,
             ),
             Expanded(
               child: Padding(

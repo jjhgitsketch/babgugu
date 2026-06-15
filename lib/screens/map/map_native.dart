@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import '../../models/models.dart';
 import '../../services/supabase_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/meeting_image.dart';
 import '../meeting_detail_screen.dart';
 
 class LocationResult {
@@ -270,6 +271,10 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
+    final locateButtonBottom =
+        safeBottom + (_selectedLocation == null ? 20.0 : 224.0);
+
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: AppBar(
@@ -307,7 +312,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
               initialCameraPosition:
                   NCameraPosition(target: _defaultLocation, zoom: 14),
               mapType: NMapType.basic,
-              locationButtonEnable: true,
+              locationButtonEnable: false,
             ),
             onMapReady: (controller) async {
               _mapController = controller;
@@ -316,6 +321,15 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
             },
             onMapTapped: _onMapTap,
           ),
+          if (!_mapLoading)
+            Positioned(
+              right: 20,
+              bottom: locateButtonBottom,
+              child: _MapLocateButton(
+                hasLocation: true,
+                onTap: _moveToCurrentLocation,
+              ),
+            ),
           if (_selectedLocation == null && !_mapLoading)
             Positioned(
               top: 16,
@@ -359,11 +373,11 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
             ),
           if (_selectedLocation != null)
             Positioned(
-              bottom: 0,
+              bottom: safeBottom,
               left: 0,
               right: 0,
               child: Container(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
                 decoration: const BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -1142,19 +1156,13 @@ class _MapMeetingRow extends StatelessWidget {
           height: 128,
           child: Row(
             children: [
-              Container(
+              MeetingImage(
+                meeting: meeting,
                 width: 105,
                 height: 128,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFECE5),
-                  borderRadius: BorderRadius.circular(13),
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  _mapMeetingIcon(meeting),
-                  size: 42,
-                  color: AppColors.primary,
-                ),
+                borderRadius: BorderRadius.circular(13),
+                fallbackColor: const Color(0xFFFFECE5),
+                iconSize: 42,
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -1265,30 +1273,6 @@ class _MeetingWithDistance {
   final MeetingModel meeting;
   final double distanceKm;
   const _MeetingWithDistance({required this.meeting, required this.distanceKm});
-}
-
-IconData _mapMeetingIcon(MeetingModel meeting) {
-  final text =
-      '${meeting.title} ${meeting.category ?? ''} ${meeting.tags.join(' ')}';
-  if (text.contains('\uCD08\uBC25') || text.contains('\uC77C\uC2DD')) {
-    return Icons.set_meal_rounded;
-  }
-  if (text.contains('\uB9C8\uB77C') || text.contains('\uC911\uC2DD')) {
-    return Icons.ramen_dining_rounded;
-  }
-  if (text.contains('\uD30C\uC2A4\uD0C0') || text.contains('\uC591\uC2DD')) {
-    return Icons.local_pizza_rounded;
-  }
-  if (text.contains('\uAC10\uC790\uD0D5') || text.contains('\uCC0C\uAC1C')) {
-    return Icons.soup_kitchen_rounded;
-  }
-  if (text.contains('\uD584\uBC84\uAC70') ||
-      text.contains('\uC0CC\uB4DC\uC704\uCE58')) {
-    return Icons.lunch_dining_rounded;
-  }
-  return meeting.type == MeetingType.delivery
-      ? Icons.delivery_dining_rounded
-      : Icons.restaurant_rounded;
 }
 
 String _mapTagLine(List<String> tags) {

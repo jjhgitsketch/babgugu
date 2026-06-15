@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../theme/app_theme.dart';
 import 'tag_chip.dart';
+import 'meeting_image.dart';
 
 class MeetingCard extends StatelessWidget {
   final MeetingModel meeting;
@@ -53,6 +54,17 @@ class MeetingCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                MeetingImage(
+                  meeting: meeting,
+                  width: double.infinity,
+                  height: 118,
+                  borderRadius: BorderRadius.circular(14),
+                  fallbackColor: meeting.type == MeetingType.restaurant
+                      ? const Color(0xFFE8F4FF)
+                      : const Color(0xFFFFF3E0),
+                  iconSize: 42,
+                ),
+                const SizedBox(height: 12),
                 Row(
                   children: [
                     Container(

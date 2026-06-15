@@ -5,6 +5,7 @@ import '../models/models.dart';
 import '../services/notification_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/meeting_image.dart';
 import 'chat_screen.dart';
 import 'create_meeting_screen.dart';
 import 'explore_screen.dart';
@@ -490,20 +491,14 @@ class _ChatRoomTile extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Container(
+          MeetingImage(
+            meeting: meeting,
             width: 92,
             height: 97,
-            decoration: BoxDecoration(
-              color: isDelivery
-                  ? const Color(0xFFFFF0EF)
-                  : const Color(0xFFEDEDED),
-              borderRadius: BorderRadius.circular(13),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              isDelivery ? '🛵' : '🍣',
-              style: const TextStyle(fontSize: 40),
-            ),
+            borderRadius: BorderRadius.circular(13),
+            fallbackColor:
+                isDelivery ? const Color(0xFFFFF0EF) : const Color(0xFFEDEDED),
+            iconSize: 38,
           ),
           const SizedBox(width: 14),
           Expanded(

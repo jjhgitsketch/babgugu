@@ -106,9 +106,9 @@ class TrustScore {
   const TrustScore({required this.average, required this.count});
 
   bool get hasReviews => count > 0;
-  String get display => hasReviews ? average.toStringAsFixed(1) : '4.8';
+  String get display => hasReviews ? average.toStringAsFixed(1) : '-';
 
-  static const empty = TrustScore(average: 4.8, count: 0);
+  static const empty = TrustScore(average: 0, count: 0);
 }
 
 class SoloPlaceScore {

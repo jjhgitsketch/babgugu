@@ -10,6 +10,7 @@ import 'review_screen.dart';
 class SettlementScreen extends StatefulWidget {
   final MeetingModel meeting;
   final bool isHost;
+  final String? settlementId;
   final int totalAmount;
   final String bankInfo;
   final String? receiptImageUrl;
@@ -19,8 +20,9 @@ class SettlementScreen extends StatefulWidget {
     super.key,
     required this.meeting,
     required this.isHost,
+    this.settlementId,
     this.totalAmount = 0,
-    this.bankInfo = '신한은행 1000-000-000001',
+    this.bankInfo = '\uC2E0\uD55C\uC740\uD589 1000-000-000001',
     this.receiptImageUrl,
     this.memberNames = const [],
   });
@@ -30,42 +32,121 @@ class SettlementScreen extends StatefulWidget {
 }
 
 class _SettlementScreenState extends State<SettlementScreen> {
-  late final List<_SettlementMember> _members;
-  late final DateTime _requestedAt;
+  List<_SettlementMember> _members = [];
+  DateTime _requestedAt = DateTime.now();
+  String? _activeSettlementId;
+  int? _savedTotalAmount;
+  String? _savedBankInfo;
+  String? _savedReceiptImageUrl;
   bool _showSummary = true;
 
   int get _memberCount => _members.isEmpty ? 1 : _members.length;
-  int get _totalAmount => widget.totalAmount > 0 ? widget.totalAmount : 0;
-  bool get _allPaid =>
-      _members.every((member) => member.status == _PayStatus.done);
+  int get _totalAmount => (_savedTotalAmount != null && _savedTotalAmount! > 0)
+      ? _savedTotalAmount!
+      : widget.totalAmount > 0
+          ? widget.totalAmount
+          : 0;
+  String get _bankInfo => _savedBankInfo ?? widget.bankInfo;
+  String? get _receiptImageUrl =>
+      _savedReceiptImageUrl ?? widget.receiptImageUrl;
+
+  bool get _allPaid {
+    final payableMembers = _members.where((member) => !_isHostMember(member));
+    if (payableMembers.isEmpty) return true;
+    return payableMembers.every(
+      (member) => member.status == _PayStatus.done,
+    );
+  }
 
   @override
   void initState() {
     super.initState();
-    _requestedAt = DateTime.now();
-    final fallbackName = currentUser?.name ?? '모임 멤버';
+    _activeSettlementId = widget.settlementId;
+    _members = _buildFallbackMembers();
+    _loadSettlementState();
+  }
+
+  List<_SettlementMember> _buildFallbackMembers() {
+    final fallbackName = currentUser?.name ?? '\uBAA8\uC784 \uBA64\uBC84';
     final names = widget.memberNames.isEmpty
         ? <String>[fallbackName]
         : widget.memberNames;
     final perPersonAmount =
         names.isEmpty ? 0 : (_totalAmount / names.length).round();
-    _members = names
-        .map((name) => _SettlementMember(
-              name: name.trim().isEmpty ? '모임 멤버' : name.trim(),
-              amount: perPersonAmount,
-              status: _PayStatus.pending,
-            ))
+    return names
+        .map(
+          (name) => _SettlementMember(
+            name:
+                name.trim().isEmpty ? '\uBAA8\uC784 \uBA64\uBC84' : name.trim(),
+            amount: perPersonAmount,
+            status: _PayStatus.pending,
+          ),
+        )
         .toList();
   }
 
-  void _confirmPayment(int index) {
-    if (!widget.isHost) return;
+  Future<void> _loadSettlementState() async {
+    final state = await SupabaseService.getSettlementState(
+      settlementId: widget.settlementId,
+      meetingId: widget.meeting.id,
+    );
+    if (!mounted || state == null) return;
+
+    final rows = List<Map<String, dynamic>>.from(
+      (state['members'] as List?) ?? const [],
+    );
+    final members = rows.map((row) {
+      return _SettlementMember(
+        userId: row['user_id'] as String? ?? '',
+        name: (row['user_name'] as String?)?.trim().isNotEmpty == true
+            ? (row['user_name'] as String).trim()
+            : '\uBAA8\uC784 \uBA64\uBC84',
+        amount: (row['amount'] as num?)?.toInt() ?? 0,
+        status: _PayStatusX.fromDb(row['status'] as String?),
+      );
+    }).toList();
+
     setState(() {
-      _members[index] = _members[index].copyWith(status: _PayStatus.done);
+      _activeSettlementId = state['id'] as String?;
+      _savedTotalAmount = (state['total_amount'] as num?)?.toInt();
+      _savedBankInfo = state['bank_info'] as String?;
+      _savedReceiptImageUrl = state['memo'] as String?;
+      final createdAt = state['created_at'] as String?;
+      if (createdAt != null) {
+        _requestedAt = DateTime.tryParse(createdAt)?.toLocal() ?? _requestedAt;
+      }
+      if (members.isNotEmpty) _members = members;
     });
   }
 
+  Future<void> _confirmPayment(int index) async {
+    if (!widget.isHost || _isHostMember(_members[index])) return;
+    final member = _members[index];
+    setState(() {
+      _members[index] = member.copyWith(status: _PayStatus.done);
+    });
+
+    try {
+      final settlementId = _activeSettlementId;
+      if (settlementId != null && member.userId.isNotEmpty) {
+        await SupabaseService.updateSettlementMemberStatus(
+          settlementId: settlementId,
+          memberUserId: member.userId,
+          status: 'confirmed',
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _members[index] = member);
+      _showSnackBar(
+          '\uC785\uAE08 \uD655\uC778\uC744 \uC800\uC7A5\uD558\uC9C0 \uBABB\uD588\uC5B4\uC694: $e');
+    }
+  }
+
   bool _isCurrentUserMember(_SettlementMember member) {
+    if (member.userId.isNotEmpty && member.userId == SupabaseService.userId) {
+      return true;
+    }
     final memberName = member.name.trim();
     if (memberName.isEmpty) return false;
 
@@ -81,11 +162,49 @@ class _SettlementScreenState extends State<SettlementScreen> {
     return userNames.contains(memberName);
   }
 
+  bool _isHostMember(_SettlementMember member) {
+    if (member.userId.isNotEmpty && member.userId == widget.meeting.hostId) {
+      return true;
+    }
+    final memberName = member.name.trim();
+    if (memberName.isEmpty) return false;
+
+    final hostNames = <String?>[
+      widget.meeting.hostName,
+      widget.isHost ? currentUser?.name : null,
+      widget.isHost ? currentUser?.nickname : null,
+      widget.isHost ? currentUser?.displayName : null,
+    ]
+        .where((name) => name != null && name.trim().isNotEmpty)
+        .map((name) => name!.trim())
+        .toSet();
+
+    return hostNames.contains(memberName);
+  }
+
+  Widget _buildMemberRow(int index) {
+    final member = _members[index];
+    final isHostSelf = widget.isHost && _isHostMember(member);
+
+    return _SettlementMemberRow(
+      member: member,
+      isHost: widget.isHost,
+      isHostSelf: isHostSelf,
+      enabled: isHostSelf || widget.isHost
+          ? !isHostSelf
+          : _isCurrentUserMember(member),
+      onPressed: widget.isHost
+          ? () => _confirmPayment(index)
+          : () => _requestPaymentCheck(index),
+    );
+  }
+
   Future<void> _requestPaymentCheck(int index) async {
     if (widget.isHost) return;
     final member = _members[index];
     if (!_isCurrentUserMember(member)) {
-      _showSnackBar('본인 입금만 확인 요청할 수 있어요.');
+      _showSnackBar(
+          '\uBCF8\uC778 \uC785\uAE08\uB9CC \uD655\uC778 \uC694\uCCAD\uD560 \uC218 \uC788\uC5B4\uC694.');
       return;
     }
     if (member.status != _PayStatus.pending) return;
@@ -95,23 +214,36 @@ class _SettlementScreenState extends State<SettlementScreen> {
     });
 
     try {
+      final settlementId = _activeSettlementId;
+      if (settlementId != null && member.userId.isNotEmpty) {
+        await SupabaseService.updateSettlementMemberStatus(
+          settlementId: settlementId,
+          memberUserId: member.userId,
+          status: 'paid',
+        );
+      }
       await SupabaseService.sendMessage(
         meetingId: widget.meeting.id,
-        text: '입금 확인 요청\nmember:${currentUser?.name ?? member.name}',
+        text:
+            '\uC785\uAE08 \uD655\uC778 \uC694\uCCAD\nmember:${currentUser?.name ?? member.name}',
         type: 'paymentConfirmRequest',
       );
-      _showSnackBar('모임장에게 입금 확인 요청을 보냈어요.');
+      _showSnackBar(
+          '\uBAA8\uC784\uC7A5\uC5D0\uAC8C \uC785\uAE08 \uD655\uC778 \uC694\uCCAD\uC744 \uBCF4\uB0C8\uC5B4\uC694.');
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _members[index] = member;
       });
-      _showSnackBar('요청을 보내지 못했어요: $e');
+      _showSnackBar(
+          '\uC694\uCCAD\uC744 \uBCF4\uB0B4\uC9C0 \uBABB\uD588\uC5B4\uC694: $e');
     }
   }
 
   void _copyBankInfo() {
-    Clipboard.setData(ClipboardData(text: widget.bankInfo));
-    _showSnackBar('계좌번호가 복사되었어요.');
+    Clipboard.setData(ClipboardData(text: _bankInfo));
+    _showSnackBar(
+        '\uACC4\uC88C\uBC88\uD638\uAC00 \uBCF5\uC0AC\uB418\uC5C8\uC5B4\uC694.');
   }
 
   void _showSnackBar(String message) {
@@ -121,13 +253,23 @@ class _SettlementScreenState extends State<SettlementScreen> {
   }
 
   Future<void> _finishSettlement() async {
-    final reviewed = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ReviewScreen(meeting: widget.meeting),
-        fullscreenDialog: true,
-      ),
-    );
+    final alreadyReviewed =
+        await SupabaseService.hasSubmittedTrustReview(widget.meeting.id);
+    if (!mounted) return;
+
+    final reviewed = alreadyReviewed
+        ? true
+        : await Navigator.push<bool>(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ReviewScreen(meeting: widget.meeting),
+              fullscreenDialog: true,
+            ),
+          );
+    if (!mounted) return;
+    if (reviewed == true && _activeSettlementId != null) {
+      await SupabaseService.completeSettlement(_activeSettlementId!);
+    }
     if (!mounted) return;
     Navigator.pop(context, reviewed == true);
   }
@@ -171,8 +313,8 @@ class _SettlementScreenState extends State<SettlementScreen> {
                           totalAmount: _totalAmount,
                           memberCount: _memberCount,
                           requestedAt: _requestedAt,
-                          bankInfo: widget.bankInfo,
-                          receiptImageUrl: widget.receiptImageUrl,
+                          bankInfo: _bankInfo,
+                          receiptImageUrl: _receiptImageUrl,
                           meeting: widget.meeting,
                           requesterName: widget.isHost
                               ? (currentUser?.name ?? '모임장')
@@ -193,15 +335,7 @@ class _SettlementScreenState extends State<SettlementScreen> {
                         ),
                         const SizedBox(height: 25),
                         for (var i = 0; i < _members.length; i++)
-                          _SettlementMemberRow(
-                            member: _members[i],
-                            isHost: widget.isHost,
-                            enabled: widget.isHost ||
-                                _isCurrentUserMember(_members[i]),
-                            onPressed: widget.isHost
-                                ? () => _confirmPayment(i)
-                                : () => _requestPaymentCheck(i),
-                          ),
+                          _buildMemberRow(i),
                       ],
                     ),
                   ),
@@ -326,44 +460,102 @@ class _SettlementSummaryCard extends StatelessWidget {
             const SizedBox(height: 20),
             Container(height: 1, color: Colors.white.withValues(alpha: 0.8)),
             const SizedBox(height: 10),
-            _SummaryRow(label: '요청 일자', value: _formatDateTime(requestedAt)),
-            _SummaryRow(label: '청구 멤버', value: requesterName),
             _SummaryRow(
-              label: '총 비용',
-              value: '총 ${_formatWon(totalAmount)}원 / $memberCount명',
+                label: '\uC694\uCCAD \uC77C\uC790',
+                value: _formatDateTime(requestedAt)),
+            _SummaryRow(
+                label: '\uCCAD\uAD6C \uBA64\uBC84', value: requesterName),
+            _SummaryRow(
+              label: '\uCD1D \uBE44\uC6A9',
+              value:
+                  '\uCD1D ${_formatWon(totalAmount)}\uC6D0 / $memberCount\uBA85',
             ),
             _SummaryRow(
-              label: '모임 장소명',
-              value: meeting.location.isEmpty ? '식당 이름 어디점' : meeting.location,
+              label: '\uBAA8\uC784 \uC7A5\uC18C\uBA85',
+              value: meeting.location.isEmpty
+                  ? '\uC2DD\uB2F9 \uC774\uB984 \uC5B4\uB514\uC810'
+                  : meeting.location,
             ),
             const SizedBox(height: 4),
-            if (receiptImageUrl == null)
+            if (receiptImageUrl == null || receiptImageUrl!.trim().isEmpty)
               const Row(
                 children: [
                   Icon(Icons.photo_camera_rounded,
                       size: 15, color: Colors.white),
                   SizedBox(width: 3),
-                  Text('첨부 이미지 없음',
+                  Text('\uCCA8\uBD80 \uC774\uBBF8\uC9C0 \uC5C6\uC74C',
                       style: TextStyle(fontSize: 10, color: Colors.white)),
                 ],
               )
-            else ...[
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.network(
-                  receiptImageUrl!,
-                  height: 86,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const Text(
-                    '첨부 이미지를 불러오지 못했어요',
-                    style: TextStyle(fontSize: 10, color: Colors.white),
+            else
+              _ReceiptImageButton(imageUrl: receiptImageUrl!),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ReceiptImageButton extends StatelessWidget {
+  final String imageUrl;
+
+  const _ReceiptImageButton({required this.imageUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 34,
+      child: OutlinedButton.icon(
+        onPressed: () => _showReceiptImage(context),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: Colors.white,
+          side: const BorderSide(color: Colors.white),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+        icon: const Icon(Icons.image_rounded, size: 16),
+        label: const Text(
+          '\uC774\uBBF8\uC9C0 \uD655\uC778\uD558\uAE30',
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+        ),
+      ),
+    );
+  }
+
+  void _showReceiptImage(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.82),
+      builder: (context) => Dialog.fullscreen(
+        backgroundColor: Colors.black,
+        child: SafeArea(
+          child: Stack(
+            children: [
+              Center(
+                child: InteractiveViewer(
+                  minScale: 0.8,
+                  maxScale: 4,
+                  child: Image.network(
+                    imageUrl,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const Text(
+                      '\uC774\uBBF8\uC9C0\uB97C \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC5B4\uC694',
+                      style: TextStyle(color: Colors.white),
+                    ),
                   ),
                 ),
               ),
+              Positioned(
+                top: 8,
+                right: 8,
+                child: IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close_rounded, color: Colors.white),
+                ),
+              ),
             ],
-          ],
-        ],
+          ),
+        ),
       ),
     );
   }
@@ -430,11 +622,13 @@ class _SettlementMemberRow extends StatelessWidget {
   final _SettlementMember member;
   final bool isHost;
   final bool enabled;
+  final bool isHostSelf;
   final VoidCallback onPressed;
 
   const _SettlementMemberRow({
     required this.member,
     required this.isHost,
+    required this.isHostSelf,
     required this.enabled,
     required this.onPressed,
   });
@@ -443,17 +637,20 @@ class _SettlementMemberRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDone = member.status == _PayStatus.done;
     final isRequested = member.status == _PayStatus.requested;
-    final buttonLabel = isHost
-        ? isDone
-            ? '입금 완료'
-            : '입금 확인'
-        : isDone
-            ? '입금 완료'
-            : isRequested
-                ? '요청 완료'
-                : '입금 확인 요청';
+    final buttonLabel = isHostSelf
+        ? '\uBAA8\uC784\uC7A5'
+        : isHost
+            ? isDone
+                ? '입금 완료'
+                : '입금 확인'
+            : isDone
+                ? '입금 완료'
+                : isRequested
+                    ? '요청 완료'
+                    : '입금 확인 요청';
     final buttonWidth = isHost ? 70.0 : 104.0;
-    final isDisabled = !enabled || isDone || isRequested && !isHost;
+    final isDisabled =
+        isHostSelf || !enabled || isDone || isRequested && !isHost;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 11),
@@ -598,12 +795,28 @@ class _BottomConfirmButton extends StatelessWidget {
 
 enum _PayStatus { pending, requested, done }
 
+extension _PayStatusX on _PayStatus {
+  static _PayStatus fromDb(String? status) {
+    switch (status) {
+      case 'paid':
+        return _PayStatus.requested;
+      case 'confirmed':
+        return _PayStatus.done;
+      case 'requested':
+      default:
+        return _PayStatus.pending;
+    }
+  }
+}
+
 class _SettlementMember {
+  final String userId;
   final String name;
   final int amount;
   final _PayStatus status;
 
   const _SettlementMember({
+    this.userId = '',
     required this.name,
     required this.amount,
     required this.status,
@@ -611,6 +824,7 @@ class _SettlementMember {
 
   _SettlementMember copyWith({_PayStatus? status}) {
     return _SettlementMember(
+      userId: userId,
       name: name,
       amount: amount,
       status: status ?? this.status,

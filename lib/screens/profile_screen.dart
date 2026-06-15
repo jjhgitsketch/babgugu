@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/meeting_image.dart';
 import 'auth/login_screen.dart';
 import 'edit_profile_screen.dart';
 import 'meeting_detail_screen.dart';
@@ -708,15 +709,15 @@ class _CreatedMeetingCard extends StatelessWidget {
         height: 116,
         child: Row(
           children: [
-            Container(
+            MeetingImage(
+              meeting: meeting,
               width: 105,
-              decoration: const BoxDecoration(
-                color: Color(0xFFD9D9D9),
-                borderRadius:
-                    BorderRadius.horizontal(left: Radius.circular(13)),
+              height: double.infinity,
+              borderRadius: const BorderRadius.horizontal(
+                left: Radius.circular(13),
               ),
-              child:
-                  const Icon(Icons.restaurant, color: Colors.white, size: 36),
+              fallbackColor: const Color(0xFFD9D9D9),
+              iconSize: 36,
             ),
             Expanded(
               child: Container(

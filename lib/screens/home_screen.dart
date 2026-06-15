@@ -5,6 +5,7 @@ import '../models/models.dart';
 import '../services/notification_service.dart';
 import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/meeting_image.dart';
 import 'chat_screen.dart';
 import 'explore_screen.dart';
 import 'meeting_detail_screen.dart';
@@ -894,9 +895,6 @@ class _MeetingListCard extends StatelessWidget {
     final typeLabel = meeting.type == MeetingType.restaurant
         ? '\uC2DD\uB2F9'
         : '\uBC30\uB2EC';
-    final typeIcon = meeting.type == MeetingType.restaurant
-        ? Icons.restaurant_rounded
-        : Icons.delivery_dining_rounded;
 
     return InkWell(
       onTap: onTap,
@@ -910,15 +908,15 @@ class _MeetingListCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Container(
+            MeetingImage(
+              meeting: meeting,
               width: 104,
               height: double.infinity,
-              decoration: const BoxDecoration(
-                color: Color(0xFFFFEEEE),
-                borderRadius:
-                    BorderRadius.horizontal(left: Radius.circular(14)),
+              borderRadius: const BorderRadius.horizontal(
+                left: Radius.circular(14),
               ),
-              child: Icon(typeIcon, size: 42, color: AppColors.primary),
+              fallbackColor: const Color(0xFFFFEEEE),
+              iconSize: 42,
             ),
             Expanded(
               child: Padding(

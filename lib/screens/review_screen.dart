@@ -30,6 +30,14 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
   Future<void> _loadMembers() async {
     try {
+      final alreadyReviewed =
+          await SupabaseService.hasSubmittedTrustReview(widget.meeting.id);
+      if (alreadyReviewed) {
+        if (!mounted) return;
+        Navigator.pop(context, true);
+        return;
+      }
+
       final rows = await SupabaseService.getMeetingMembers(widget.meeting.id);
       final members = <_ReviewMember>[];
       final seenUserIds = <String>{};

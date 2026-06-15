@@ -7,6 +7,7 @@ import '../services/supabase_service.dart';
 import '../theme/app_theme.dart';
 
 class SettlementRequestResult {
+  final String settlementId;
   final int totalAmount;
   final int perPersonAmount;
   final String bankInfo;
@@ -14,6 +15,7 @@ class SettlementRequestResult {
   final List<String> memberNames;
 
   const SettlementRequestResult({
+    required this.settlementId,
     required this.totalAmount,
     required this.perPersonAmount,
     required this.bankInfo,
@@ -102,6 +104,7 @@ class _SettlementRequestScreenState extends State<SettlementRequestScreen> {
             ? nickname!
             : (user?['name'] as String?) ?? '멤버';
         return _SettlementMember(
+          userId: row['user_id'] as String? ?? user?['id'] as String? ?? '',
           name: name,
           avatarUrl: user?['avatar_url'] as String?,
           color: _avatarColors[entry.key % _avatarColors.length],
@@ -144,14 +147,6 @@ class _SettlementRequestScreenState extends State<SettlementRequestScreen> {
             );
       if (!mounted) return;
 
-      final result = SettlementRequestResult(
-        totalAmount: _totalAmount,
-        perPersonAmount: _perPersonAmount,
-        bankInfo: _bankController.text.trim(),
-        receiptImageUrl: receiptImageUrl,
-        memberNames: _members.map((member) => member.name).toList(),
-      );
-
       final shouldRequest = await showModalBottomSheet<bool>(
         context: context,
         isScrollControlled: true,
@@ -166,7 +161,34 @@ class _SettlementRequestScreenState extends State<SettlementRequestScreen> {
       );
 
       if (!mounted || shouldRequest != true) return;
-      Navigator.pop(context, result);
+
+      final settlementId = await SupabaseService.createSettlement(
+        meetingId: widget.meeting.id,
+        totalAmount: _totalAmount,
+        perPersonAmount: _perPersonAmount,
+        bankInfo: _bankController.text.trim(),
+        receiptImageUrl: receiptImageUrl,
+        members: _members
+            .map((member) => {
+                  'user_id': member.userId,
+                  'user_name': member.name,
+                  'amount': _perPersonAmount,
+                })
+            .toList(),
+      );
+
+      if (!mounted) return;
+      Navigator.pop(
+        context,
+        SettlementRequestResult(
+          settlementId: settlementId,
+          totalAmount: _totalAmount,
+          perPersonAmount: _perPersonAmount,
+          bankInfo: _bankController.text.trim(),
+          receiptImageUrl: receiptImageUrl,
+          memberNames: _members.map((member) => member.name).toList(),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -826,11 +848,13 @@ class _UnderlinedAmount extends StatelessWidget {
 }
 
 class _SettlementMember {
+  final String userId;
   final String name;
   final String? avatarUrl;
   final Color color;
 
   const _SettlementMember({
+    required this.userId,
     required this.name,
     required this.avatarUrl,
     required this.color,
