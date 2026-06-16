@@ -1503,13 +1503,24 @@ class _AiSoloMenuRecommendationCardState
 
   String _friendlyError(Object error) {
     final text = error.toString();
+    if (text.contains('insufficient_quota') ||
+        text.contains('exceeded your current quota') ||
+        text.contains('크레딧') ||
+        text.contains('결제 한도')) {
+      return 'OpenAI API 크레딧 또는 결제 한도가 부족해요. OpenAI Billing을 확인해 주세요.';
+    }
     if (text.contains('Function not found')) {
       return 'AI 추천 함수가 아직 배포되지 않았어요.';
     }
     if (text.contains('OPENAI_API_KEY')) {
       return 'Supabase에 OPENAI_API_KEY를 먼저 등록해 주세요.';
     }
-    return text.replaceFirst('Exception: ', '');
+    if (text.contains('OpenAI request failed')) {
+      return 'AI 추천 요청을 처리하지 못했어요. 잠시 후 다시 시도해 주세요.';
+    }
+    return text
+        .replaceFirst('Exception: ', '')
+        .replaceFirst('FunctionException', '요청 오류');
   }
 
   @override
@@ -1643,8 +1654,11 @@ class _AiSoloMenuRecommendationCardState
             const SizedBox(height: 10),
             Text(
               _error!,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 fontSize: 11,
+                height: 1.25,
                 color: AppColors.primary,
                 fontWeight: FontWeight.w700,
               ),

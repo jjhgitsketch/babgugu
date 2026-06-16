@@ -126,7 +126,26 @@ async function callOpenAI(message: string, userTags: string[], places: SoloPlace
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`OpenAI request failed: ${text}`);
+    let message = "AI 추천 요청을 처리하지 못했어요.";
+    let code = "openai_request_failed";
+
+    try {
+      const parsed = JSON.parse(text);
+      const error = parsed?.error;
+      if (error?.code === "insufficient_quota" || error?.type === "insufficient_quota") {
+        message = "OpenAI API 크레딧 또는 결제 한도가 부족해요. OpenAI Billing을 확인해 주세요.";
+        code = "insufficient_quota";
+      } else if (typeof error?.message === "string") {
+        message = error.message;
+        code = String(error?.code ?? error?.type ?? code);
+      }
+    } catch (_) {
+      if (text.trim().length > 0) message = text.slice(0, 180);
+    }
+
+    const error = new Error(message);
+    error.name = code;
+    throw error;
   }
 
   const data = await response.json();
@@ -179,6 +198,6 @@ Deno.serve(async (req) => {
 
     return json(recommendation);
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : String(error) }, 500);
+    return json({ error: error instanceof Error ? error.message : String(error), code: error instanceof Error ? error.name : "unknown" }, 500);
   }
 });
