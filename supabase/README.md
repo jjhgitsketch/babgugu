@@ -13,7 +13,7 @@ Required GitHub repository secrets:
 - `SUPABASE_PROJECT_ID`
 - `SUPABASE_DB_PASSWORD`
 
-Edge function runtime secrets such as `RESEND_API_KEY`, `MAIL_FROM`, and `SUPABASE_SERVICE_ROLE_KEY` should be configured in Supabase, not committed to GitHub.
+Edge function runtime secrets such as `RESEND_API_KEY`, `MAIL_FROM`, `OPENAI_API_KEY`, optional `OPENAI_MODEL`, and `SUPABASE_SERVICE_ROLE_KEY` should be configured in Supabase, not committed to GitHub.
 
 ## Manual SQL
 

@@ -22,6 +22,8 @@ class MeetingDetailScreen extends StatefulWidget {
 class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
   late bool _isJoined;
   bool _loading = false;
+  bool _isSaved = false;
+  bool _saving = false;
   List<_MeetingMember> _members = [];
   Set<String> _blockedUserIds = {};
 
@@ -30,6 +32,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
     super.initState();
     _isJoined = widget.meeting.isJoined;
     _loadJoinStatus();
+    _loadSavedStatus();
     _loadMembers();
   }
 
@@ -41,6 +44,12 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
       _isJoined = isJoined;
       widget.meeting.isJoined = isJoined;
     });
+  }
+
+  Future<void> _loadSavedStatus() async {
+    final savedIds = await SupabaseService.getSavedMeetingIds();
+    if (!mounted) return;
+    setState(() => _isSaved = savedIds.contains(widget.meeting.id));
   }
 
   Future<void> _loadMembers() async {
@@ -69,6 +78,31 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
       _members = members;
       _blockedUserIds = blockedIds;
     });
+  }
+
+  Future<void> _toggleSave() async {
+    if (_saving) return;
+    final wasSaved = _isSaved;
+    setState(() {
+      _saving = true;
+      _isSaved = !wasSaved;
+    });
+
+    try {
+      if (wasSaved) {
+        await SupabaseService.unsaveMeeting(widget.meeting.id);
+      } else {
+        await SupabaseService.saveMeeting(widget.meeting.id);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSaved = wasSaved);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('저장 상태를 바꾸지 못했어요: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Future<void> _toggleJoin() async {
@@ -232,7 +266,10 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
               isFull: isFull,
               isJoinClosed: isJoinClosed,
               loading: _loading,
+              isSaved: _isSaved,
+              saving: _saving,
               onBack: () => Navigator.pop(context),
+              onSave: _toggleSave,
               onAction: _toggleJoin,
               onCancelJoin: _cancelJoin,
             ),
@@ -295,14 +332,17 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
                           const SizedBox(height: 12),
                           SizedBox(
                             width: double.infinity,
-                            height: 43,
+                            height: 50,
                             child: ElevatedButton.icon(
                               onPressed: _canOpenBaeminTogether
                                   ? () => _openBaeminTogether(baeminTogetherUrl)
                                   : _showJoinRequiredForBaemin,
                               icon: const Icon(Icons.open_in_new_rounded,
                                   size: 17),
-                              label: const Text('배민 함께주문 들어가기'),
+                              label: const FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text('배민 함께주문 들어가기'),
+                              ),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppColors.primary,
                                 foregroundColor: Colors.white,
@@ -311,7 +351,8 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 textStyle: const TextStyle(
-                                  fontSize: 14,
+                                  fontSize: 13,
+                                  height: 1.05,
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
@@ -371,7 +412,10 @@ class _HeroSummary extends StatelessWidget {
   final bool isFull;
   final bool isJoinClosed;
   final bool loading;
+  final bool isSaved;
+  final bool saving;
   final VoidCallback onBack;
+  final VoidCallback onSave;
   final VoidCallback onAction;
   final VoidCallback onCancelJoin;
 
@@ -382,7 +426,10 @@ class _HeroSummary extends StatelessWidget {
     required this.isFull,
     required this.isJoinClosed,
     required this.loading,
+    required this.isSaved,
+    required this.saving,
     required this.onBack,
+    required this.onSave,
     required this.onAction,
     required this.onCancelJoin,
   });
@@ -414,8 +461,12 @@ class _HeroSummary extends StatelessWidget {
                     color: Colors.black,
                   ),
                   IconButton(
-                    onPressed: () {},
-                    icon: const Icon(Icons.favorite_border_rounded),
+                    onPressed: saving ? null : onSave,
+                    icon: Icon(
+                      isSaved
+                          ? Icons.favorite_rounded
+                          : Icons.favorite_border_rounded,
+                    ),
                     color: Colors.black,
                   ),
                 ],

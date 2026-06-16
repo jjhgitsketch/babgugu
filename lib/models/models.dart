@@ -135,6 +135,62 @@ class SoloPlaceReviewDraft {
   });
 }
 
+class AiMenuRecommendation {
+  final String placeId;
+  final String placeName;
+  final String recommendedMenu;
+  final String reason;
+  final String tip;
+  final List<AiMenuAlternative> alternatives;
+
+  const AiMenuRecommendation({
+    required this.placeId,
+    required this.placeName,
+    required this.recommendedMenu,
+    required this.reason,
+    required this.tip,
+    required this.alternatives,
+  });
+
+  factory AiMenuRecommendation.fromJson(Map<String, dynamic> json) {
+    final alternatives = json['alternatives'];
+    return AiMenuRecommendation(
+      placeId: json['place_id'] as String? ?? '',
+      placeName: json['place_name'] as String? ?? '',
+      recommendedMenu: json['recommended_menu'] as String? ?? '',
+      reason: json['reason'] as String? ?? '',
+      tip: json['tip'] as String? ?? '',
+      alternatives: alternatives is List
+          ? alternatives
+              .whereType<Map>()
+              .map((item) => AiMenuAlternative.fromJson(
+                    Map<String, dynamic>.from(item),
+                  ))
+              .toList()
+          : const [],
+    );
+  }
+}
+
+class AiMenuAlternative {
+  final String placeId;
+  final String placeName;
+  final String menu;
+
+  const AiMenuAlternative({
+    required this.placeId,
+    required this.placeName,
+    required this.menu,
+  });
+
+  factory AiMenuAlternative.fromJson(Map<String, dynamic> json) =>
+      AiMenuAlternative(
+        placeId: json['place_id'] as String? ?? '',
+        placeName: json['place_name'] as String? ?? '',
+        menu: json['menu'] as String? ?? '',
+      );
+}
+
 class MeetingModel {
   final String id;
   final String title;

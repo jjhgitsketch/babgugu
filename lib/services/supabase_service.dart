@@ -96,6 +96,31 @@ class SupabaseService {
     currentUser = updated;
   }
 
+  static Future<AiMenuRecommendation> recommendSoloMenu({
+    required String message,
+    required List<Map<String, dynamic>> places,
+  }) async {
+    if (userId == 'anonymous') throw Exception('로그인이 필요해요.');
+    final trimmed = message.trim();
+    if (trimmed.isEmpty) throw Exception('먹고 싶은 조건을 입력해 주세요.');
+
+    final response = await _client.functions.invoke(
+      'ai-menu-recommendation',
+      body: {
+        'message': trimmed,
+        'user_tags': currentUser?.tags ?? const <String>[],
+        'places': places,
+      },
+    );
+    _throwFunctionError(response);
+
+    final data = response.data;
+    if (data is Map) {
+      return AiMenuRecommendation.fromJson(Map<String, dynamic>.from(data));
+    }
+    throw Exception('AI 추천 결과를 읽지 못했어요.');
+  }
+
   static void _throwFunctionError(FunctionResponse response) {
     if (response.status >= 200 && response.status < 300) return;
 
@@ -426,15 +451,15 @@ class SupabaseService {
   }
 
   static Future<void> saveMeeting(String meetingId) async {
-    if (userId == 'anonymous') return;
+    if (userId == 'anonymous') throw Exception('로그인이 필요해요.');
     await _client.from('saved_meetings').upsert({
       'user_id': userId,
       'meeting_id': meetingId,
-    });
+    }, onConflict: 'user_id,meeting_id');
   }
 
   static Future<void> unsaveMeeting(String meetingId) async {
-    if (userId == 'anonymous') return;
+    if (userId == 'anonymous') throw Exception('로그인이 필요해요.');
     await _client.from('saved_meetings').delete().match({
       'user_id': userId,
       'meeting_id': meetingId,

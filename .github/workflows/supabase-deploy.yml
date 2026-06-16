@@ -42,3 +42,5 @@ jobs:
 
       - name: Deploy verify-school-verification function
         run: supabase functions deploy verify-school-verification --project-ref "$SUPABASE_PROJECT_ID"
+      - name: Deploy ai-menu-recommendation function
+        run: supabase functions deploy ai-menu-recommendation --project-ref "$SUPABASE_PROJECT_ID"

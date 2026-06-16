@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/notification_service.dart';
 import '../services/supabase_service.dart';
+import '../services/location_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/meeting_image.dart';
 import 'chat_screen.dart';
@@ -26,11 +27,19 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loading = true;
   int _selectedTab = 0;
   int _myMeetingPage = 0;
+  String _currentAddress = LocationService.fallbackAddress;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _loadCurrentAddress();
+  }
+
+  Future<void> _loadCurrentAddress() async {
+    final address = await LocationService.getCurrentAddress(context);
+    if (!mounted) return;
+    setState(() => _currentAddress = address);
   }
 
   Future<void> _load() async {
@@ -76,6 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
       MaterialPageRoute(builder: (_) => MeetingDetailScreen(meeting: meeting)),
     );
     _load();
+    _loadCurrentAddress();
   }
 
   void _openChat(MeetingModel meeting) {
@@ -158,13 +168,17 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: RefreshIndicator(
-        onRefresh: _load,
+        onRefresh: () async {
+          await _load();
+          await _loadCurrentAddress();
+        },
         color: AppColors.primary,
         child: ListView(
           padding: EdgeInsets.zero,
           children: [
             _HomeHeader(
               selectedTab: _selectedTab,
+              currentAddress: _currentAddress,
               onTabChanged: (index) => setState(() => _selectedTab = index),
               onSavedTap: _openSavedMeetings,
               onNotificationTap: _openNotifications,
@@ -209,11 +223,13 @@ class _HomeScreenState extends State<HomeScreen> {
 class _HomeHeader extends StatelessWidget {
   final int selectedTab;
   final ValueChanged<int> onTabChanged;
+  final String currentAddress;
   final VoidCallback onSavedTap;
   final VoidCallback onNotificationTap;
 
   const _HomeHeader({
     required this.selectedTab,
+    required this.currentAddress,
     required this.onTabChanged,
     required this.onSavedTap,
     required this.onNotificationTap,
@@ -248,7 +264,7 @@ class _HomeHeader extends StatelessWidget {
                   const SizedBox(width: 3),
                   Expanded(
                     child: Text(
-                      '\uC911\uC559\uB300\uD559\uAD50 \uB2E4\uBE48\uCE58\uCEA0\uD37C\uC2A4',
+                      currentAddress,
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
@@ -972,7 +988,7 @@ class _MeetingListCard extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 3),
                     Text(
                       meeting.title,
                       maxLines: 1,
@@ -982,7 +998,7 @@ class _MeetingListCard extends StatelessWidget {
                         fontWeight: FontWeight.w900,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 3),
                     Text(
                       meeting.tags.take(3).join(' '),
                       maxLines: 1,
@@ -1037,63 +1053,15 @@ class _SoloRecommendationPanel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            '\uC624\uB298\uC758 \uBA54\uB274 \uCD94\uCC9C',
+            'AI 메뉴 추천',
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 13),
-          Padding(
-            padding: const EdgeInsets.only(right: 20),
-            child: Container(
-              height: 154,
-              padding: const EdgeInsets.all(13),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: const Color(0xFFE5E5E5)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryBg,
-                      borderRadius: BorderRadius.circular(99),
-                    ),
-                    child: const Text(
-                      '\uB0B4 \uD0DC\uADF8 \uAE30\uBC18',
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.primary,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 13),
-                  const Row(
-                    children: [
-                      Expanded(
-                        child: _MenuRecommendCard(
-                          label: '\uC810\uC2EC',
-                          menu: '\uBD80\uB9AC\uB610',
-                          icon: Icons.lunch_dining_rounded,
-                        ),
-                      ),
-                      SizedBox(width: 12),
-                      Expanded(
-                        child: _MenuRecommendCard(
-                          label: '\uC800\uB141',
-                          menu: '\uCE58\uC988 \uB3C8\uAE4C\uC2A4',
-                          icon: Icons.dinner_dining_rounded,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+          const Padding(
+            padding: EdgeInsets.only(right: 20),
+            child: _AiSoloMenuRecommendationCard(places: _soloPlaces),
           ),
+          const SizedBox(height: 24),
           const SizedBox(height: 24),
           Padding(
             padding: const EdgeInsets.only(right: 20),
@@ -1265,7 +1233,7 @@ class _DailyBalanceGameCardState extends State<_DailyBalanceGameCard> {
           const SizedBox(height: 13),
           if (_loading)
             const SizedBox(
-              height: 88,
+              height: 96,
               child: Center(
                 child: CircularProgressIndicator(
                   color: AppColors.primary,
@@ -1355,7 +1323,7 @@ class _BalanceOptionButton extends StatelessWidget {
       onTap: voted ? null : onTap,
       borderRadius: BorderRadius.circular(14),
       child: Container(
-        height: 88,
+        height: 96,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: selected ? AppColors.primaryBg : const Color(0xFFFFF5F5),
@@ -1377,29 +1345,31 @@ class _BalanceOptionButton extends StatelessWidget {
                 ),
               ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(icon, color: AppColors.primary, size: 24),
-                  const SizedBox(height: 6),
+                  Icon(icon, color: AppColors.primary, size: 23),
+                  const SizedBox(height: 5),
                   Text(
                     label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 13,
+                      height: 1.05,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
                   if (voted) ...[
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 3),
                     Text(
                       '$percent% · $count\uBA85',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontSize: 11,
+                        height: 1.05,
                         color: AppColors.primary,
                         fontWeight: FontWeight.w800,
                       ),
@@ -1463,59 +1433,364 @@ const _balanceQuestions = [
   ),
 ];
 
-class _MenuRecommendCard extends StatelessWidget {
-  final String label;
-  final String menu;
-  final IconData icon;
+class _AiSoloMenuRecommendationCard extends StatefulWidget {
+  final List<SoloPlace> places;
 
-  const _MenuRecommendCard({
-    required this.label,
-    required this.menu,
-    required this.icon,
-  });
+  const _AiSoloMenuRecommendationCard({required this.places});
+
+  @override
+  State<_AiSoloMenuRecommendationCard> createState() =>
+      _AiSoloMenuRecommendationCardState();
+}
+
+class _AiSoloMenuRecommendationCardState
+    extends State<_AiSoloMenuRecommendationCard> {
+  final _controller = TextEditingController();
+  AiMenuRecommendation? _recommendation;
+  bool _loading = false;
+  String? _error;
+
+  static const _quickPrompts = [
+    '1만원 이하로 든든하게',
+    '맵지 않고 빠르게',
+    '혼자 조용히 먹기 좋은 곳',
+  ];
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _ask([String? preset]) async {
+    final message = (preset ?? _controller.text).trim();
+    if (message.isEmpty || _loading) return;
+    if (preset != null) _controller.text = preset;
+    FocusScope.of(context).unfocus();
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    try {
+      final result = await SupabaseService.recommendSoloMenu(
+        message: message,
+        places: widget.places.map(_placePayload).toList(),
+      );
+      if (!mounted) return;
+      setState(() => _recommendation = result);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = _friendlyError(e));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Map<String, dynamic> _placePayload(SoloPlace place) => {
+        'id': place.id,
+        'name': place.name,
+        'category': place.category,
+        'group': place.group,
+        'distance': place.distance,
+        'address': place.address,
+        'hours': place.hours,
+        'menu': place.menu,
+        'tags': place.tags,
+        'score': place.baseScore,
+      };
+
+  String _friendlyError(Object error) {
+    final text = error.toString();
+    if (text.contains('Function not found')) {
+      return 'AI 추천 함수가 아직 배포되지 않았어요.';
+    }
+    if (text.contains('OPENAI_API_KEY')) {
+      return 'Supabase에 OPENAI_API_KEY를 먼저 등록해 주세요.';
+    }
+    return text.replaceFirst('Exception: ', '');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final recommendation = _recommendation;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(15, 15, 15, 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE5E5E5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.auto_awesome_rounded,
+                  size: 20, color: AppColors.primary),
+              SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  '오늘 뭐 먹을지 물어보기',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          const Text(
+            '먹고 싶은 조건을 말하면 주변 혼밥 장소 중에서 골라줘요.',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11,
+              height: 1.25,
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: _quickPrompts.map((prompt) {
+              return GestureDetector(
+                onTap: _loading ? null : () => _ask(prompt),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF5F5),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: const Color(0xFFF0D3D3)),
+                  ),
+                  child: Text(
+                    prompt,
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _controller,
+                  minLines: 1,
+                  maxLines: 2,
+                  textInputAction: TextInputAction.send,
+                  scrollPadding: const EdgeInsets.only(bottom: 220),
+                  onSubmitted: (_) => _ask(),
+                  decoration: InputDecoration(
+                    hintText: '예) 매운 거 말고 1만원 이하',
+                    hintStyle: const TextStyle(fontSize: 12),
+                    filled: true,
+                    fillColor: const Color(0xFFF7F7F7),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 46,
+                height: 42,
+                child: ElevatedButton(
+                  onPressed: _loading ? null : _ask,
+                  style: ElevatedButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: const Color(0xFFE6B2B2),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: _loading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.send_rounded, size: 19),
+                ),
+              ),
+            ],
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              _error!,
+              style: const TextStyle(
+                fontSize: 11,
+                color: AppColors.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+          if (recommendation != null) ...[
+            const SizedBox(height: 13),
+            _AiRecommendationResult(recommendation: recommendation),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AiRecommendationResult extends StatelessWidget {
+  final AiMenuRecommendation recommendation;
+
+  const _AiRecommendationResult({required this.recommendation});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 76,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      width: double.infinity,
+      padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF5F5),
+        color: const Color(0xFFFFF8F8),
         borderRadius: BorderRadius.circular(14),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 25, color: AppColors.primary),
-          const SizedBox(width: 7),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    color: AppColors.textSecondary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  menu,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ],
+          Text(
+            recommendation.placeName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            recommendation.recommendedMenu,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 13,
+              color: AppColors.primary,
+              fontWeight: FontWeight.w900,
             ),
           ),
+          const SizedBox(height: 7),
+          Text(
+            recommendation.reason,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 11.5,
+              height: 1.3,
+              color: Color(0xFF555555),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (recommendation.tip.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              recommendation.tip,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 11,
+                height: 1.25,
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+          if (recommendation.alternatives.isNotEmpty) ...[
+            const SizedBox(height: 9),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: recommendation.alternatives.map((item) {
+                return Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: const Color(0xFFEEDADA)),
+                  ),
+                  child: Text(
+                    '${item.placeName} · ${item.menu}',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+class _SoloPlaceImage extends StatelessWidget {
+  final SoloPlace place;
+  final double width;
+  final double height;
+  final double iconSize;
+  final BorderRadius borderRadius;
+
+  const _SoloPlaceImage({
+    required this.place,
+    required this.width,
+    required this.height,
+    required this.iconSize,
+    required this.borderRadius,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final imageAsset = place.imageAsset;
+    return ClipRRect(
+      borderRadius: borderRadius,
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: imageAsset == null
+            ? ColoredBox(
+                color: place.color.withValues(alpha: 0.16),
+                child: Center(
+                  child: Icon(place.icon, size: iconSize, color: place.color),
+                ),
+              )
+            : Image.asset(
+                imageAsset,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => ColoredBox(
+                  color: place.color.withValues(alpha: 0.16),
+                  child: Center(
+                    child: Icon(place.icon, size: iconSize, color: place.color),
+                  ),
+                ),
+              ),
       ),
     );
   }
@@ -1567,12 +1842,12 @@ class _SoloPlaceCardState extends State<_SoloPlaceCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
+          _SoloPlaceImage(
+            place: place,
+            width: double.infinity,
             height: 66,
-            color: place.color.withValues(alpha: 0.16),
-            child: Center(
-              child: Icon(place.icon, size: 35, color: place.color),
-            ),
+            iconSize: 35,
+            borderRadius: BorderRadius.zero,
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(11, 8, 11, 0),
@@ -1889,14 +2164,12 @@ class _SoloPlaceListTileState extends State<_SoloPlaceListTile> {
       height: 138,
       child: Row(
         children: [
-          Container(
+          _SoloPlaceImage(
+            place: place,
             width: 108,
             height: 108,
-            decoration: BoxDecoration(
-              color: place.color.withValues(alpha: 0.16),
-              borderRadius: BorderRadius.circular(13),
-            ),
-            child: Icon(place.icon, size: 48, color: place.color),
+            iconSize: 48,
+            borderRadius: BorderRadius.circular(13),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -2131,149 +2404,157 @@ class _SoloPlaceReviewSheetState extends State<_SoloPlaceReviewSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.paddingOf(context).bottom;
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: EdgeInsets.only(bottom: bottomInset),
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    final safeBottom = MediaQuery.paddingOf(context).bottom;
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.88;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: keyboardInset),
+      child: SafeArea(
+        top: false,
         child: Container(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+          constraints: BoxConstraints(maxHeight: maxHeight),
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 46,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFDADADA),
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              Text(
-                widget.place.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style:
-                    const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                '혼밥하기 얼마나 괜찮았나요?',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: AppColors.textSecondary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 18),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(5, (index) {
-                  final value = index + 1;
-                  return IconButton(
-                    onPressed: () => setState(() => _score = value),
-                    icon: Icon(
-                      value <= _score
-                          ? Icons.star_rounded
-                          : Icons.star_border_rounded,
-                      size: 35,
-                      color: AppColors.primary,
+          child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + safeBottom),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 46,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFDADADA),
+                      borderRadius: BorderRadius.circular(99),
                     ),
-                  );
-                }),
-              ),
-              Center(
-                child: Text(
-                  '$_score.0점',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w900,
                   ),
                 ),
-              ),
-              const SizedBox(height: 17),
-              Wrap(
-                spacing: 7,
-                runSpacing: 7,
-                children: _reviewTags.map((tag) {
-                  final selected = _selectedTags.contains(tag);
-                  return GestureDetector(
-                    onTap: () => setState(() {
-                      if (selected) {
-                        _selectedTags.remove(tag);
-                      } else {
-                        _selectedTags.add(tag);
-                      }
-                    }),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 7,
+                const SizedBox(height: 18),
+                Text(
+                  widget.place.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  '혼밥하기 얼마나 괜찮았나요?',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(5, (index) {
+                    final value = index + 1;
+                    return IconButton(
+                      onPressed: () => setState(() => _score = value),
+                      icon: Icon(
+                        value <= _score
+                            ? Icons.star_rounded
+                            : Icons.star_border_rounded,
+                        size: 35,
+                        color: AppColors.primary,
                       ),
-                      decoration: BoxDecoration(
-                        color: selected
-                            ? AppColors.primary
-                            : const Color(0xFFF1F1F1),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        '#$tag',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          color: selected ? Colors.white : Colors.black,
+                    );
+                  }),
+                ),
+                Center(
+                  child: Text(
+                    '$_score.0점',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 17),
+                Wrap(
+                  spacing: 7,
+                  runSpacing: 7,
+                  children: _reviewTags.map((tag) {
+                    final selected = _selectedTags.contains(tag);
+                    return GestureDetector(
+                      onTap: () => setState(() {
+                        if (selected) {
+                          _selectedTags.remove(tag);
+                        } else {
+                          _selectedTags.add(tag);
+                        }
+                      }),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 7,
+                        ),
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? AppColors.primary
+                              : const Color(0xFFF1F1F1),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          '#$tag',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: selected ? Colors.white : Colors.black,
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _commentController,
-                minLines: 2,
-                maxLines: 3,
-                decoration: InputDecoration(
-                  hintText: '짧은 후기를 남겨주세요 (선택)',
-                  hintStyle: const TextStyle(fontSize: 12),
-                  filled: true,
-                  fillColor: const Color(0xFFF6F6F6),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.all(13),
+                    );
+                  }).toList(),
                 ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: ElevatedButton(
-                  onPressed: _submit,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _commentController,
+                  minLines: 2,
+                  maxLines: 3,
+                  decoration: InputDecoration(
+                    hintText: '짧은 후기를 남겨주세요 (선택)',
+                    hintStyle: const TextStyle(fontSize: 12),
+                    filled: true,
+                    fillColor: const Color(0xFFF6F6F6),
+                    border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
                     ),
-                  ),
-                  child: const Text(
-                    '평가 저장하기',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
+                    contentPadding: const EdgeInsets.all(13),
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: _submit,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      '평가 저장하기',
+                      style:
+                          TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -2424,6 +2705,8 @@ class SoloPlace {
   final IconData icon;
   final Color color;
   final double baseScore;
+  final String? imageAsset;
+  final String? phone;
 
   const SoloPlace({
     required this.id,
@@ -2438,6 +2721,8 @@ class SoloPlace {
     required this.icon,
     required this.color,
     this.baseScore = 4.0,
+    this.imageAsset,
+    this.phone,
   });
 }
 
@@ -2459,114 +2744,170 @@ const _foodCategories = [
 
 const _soloPlaces = [
   SoloPlace(
-    id: 'times-taco',
-    baseScore: 4.4,
-    name: '\uD0C0\uC784\uC2A4\uD30C\uCF54',
+    id: 'james-taco',
+    baseScore: 4.6,
+    name: '\uC81C\uC784\uC2A4\uD0C0\uCF54',
     category: '\uBA55\uC2DC\uCF54 \uC591\uC2DD',
     group: '\uC591\uC2DD',
     distance: '\uB3C4\uBCF4 5\uBD84',
     address:
-        '\uACBD\uAE30 \uC548\uC131\uC2DC \uB300\uB355\uBA74 \uB300\uD559\uB85C 25',
-    hours: '11:00 ~ 21:30',
-    menu: '\uBD80\uB9AC\uB610 \uC138\uD2B8 - 8,500\uC6D0',
+        '\uACBD\uAE30 \uC548\uC131\uC2DC \uB300\uB355\uBA74 \uB300\uD55910\uAE38 25',
+    hours:
+        '\uC6D4~\uAE08 11:00~21:30 · \uC77C 11:00~21:30 · \uD1A0 \uD734\uBB34',
+    menu:
+        '\uBCA0\uC774\uCEE8\uC5D0\uADF8\uAC08\uB9AD\uBD80\uB9AC\uB610 - 8,000\uC6D0',
     tags: [
       '1\uC778 \uBA54\uB274',
-      '\uAC00\uC131\uBE44',
-      '\uD0A4\uC624\uC2A4\uD06C \uC8FC\uBB38'
+      '\uBD80\uB9AC\uB610',
+      '\uD63C\uBC25\uD558\uAE30 \uC88B\uC740'
     ],
     icon: Icons.local_dining_rounded,
     color: Color(0xFFF06B6B),
+    imageAsset: 'assets/images/solo_places/james_taco.png',
+    phone: '070-8274-3544',
   ),
   SoloPlace(
-    id: 'hansot-dosirak',
+    id: 'mara-zone',
     baseScore: 4.2,
-    name: '\uD55C\uC19F\uB3C4\uC2DC\uB77D',
-    category: '\uD55C\uC2DD',
-    group: '\uD55C\uC2DD',
+    name: '\uB9C8\uB77CZONE\uB9C8\uB77C\uD0D5 \uBCF8\uC810',
+    category: '\uB9C8\uB77C\uD0D5',
+    group: '\uC911\uC2DD',
     distance: '\uB3C4\uBCF4 5\uBD84',
     address:
-        '\uACBD\uAE30 \uC548\uC131\uC2DC \uB300\uB355\uBA74 \uB300\uD559\uB85C 23',
-    hours: '10:00 ~ 18:30',
-    menu: '\uCE58\uC988 \uB3C8\uAE4C\uC2A4 \uB3C4\uC2DC\uB77D - 6,100\uC6D0',
-    tags: [
-      '1\uC778 \uBA54\uB274',
-      '\uAC00\uC131\uBE44',
-      '\uC0AC\uC7A5 \uCD94\uCC9C'
-    ],
-    icon: Icons.rice_bowl_rounded,
-    color: Color(0xFFEF9F43),
+        '\uACBD\uAE30 \uC548\uC131\uC2DC \uB300\uB355\uBA74 \uB300\uD5599\uAE38 13',
+    hours:
+        '\uC6D4~\uAE08 10:30~20:00 · \uC77C 10:30~20:00 · \uD1A0 \uD734\uBB34',
+    menu: '\uBCA0\uC2A4\uD2B8 \uBA54\uB274 \uC815\uBCF4 \uC5C6\uC74C',
+    tags: ['1\uC778 \uBA54\uB274', '\uB9C8\uB77C\uD0D5', '\uC911\uC2DD'],
+    icon: Icons.ramen_dining_rounded,
+    color: Color(0xFFE0A22F),
+    imageAsset: 'assets/images/solo_places/mara_zone.png',
+    phone: '0507-1472-1188',
   ),
   SoloPlace(
-    id: 'cupbap-lab',
-    baseScore: 4.5,
-    name: '\uCEF5\uBC25\uC5F0\uAD6C\uC18C',
-    category: '\uBD84\uC2DD \uCEF5\uBC25',
-    group: '\uBD84\uC2DD',
-    distance: '\uB3C4\uBCF4 3\uBD84',
+    id: 'michin-padak',
+    baseScore: 4.1,
+    name: '\uBBF8\uCCD0\uBC84\uB9B0\uD30C\uB2ED \uC911\uC559\uB300\uC810',
+    category: '\uCE58\uD0A8 \uD30C\uB2ED',
+    group: '\uCE58\uD0A8',
+    distance: '\uB3C4\uBCF4 5\uBD84',
     address:
-        '\uACBD\uAE30 \uC548\uC131\uC2DC \uB300\uB355\uBA74 \uB300\uD559\uB85C 31 2\uCE35',
-    hours: '11:00 ~ 21:00',
-    menu: '\uC81C\uC721\uAE40\uCE58 \uCEF5\uBC25 - 6,500\uC6D0',
-    tags: [
-      '1\uC778 \uBA54\uB274',
-      '\uAC00\uC131\uBE44',
-      '\uBE60\uB978 \uC2DD\uC0AC'
-    ],
-    icon: Icons.takeout_dining_rounded,
+        '\uACBD\uAE30 \uC548\uC131\uC2DC \uB300\uB355\uBA74 \uB300\uD55910\uAE38 17',
+    hours: '\uB9E4\uC77C 17:00~\uB2E4\uC74C \uB0A0 02:00',
+    menu: '\uB300\uD45C \uBA54\uB274 \uC815\uBCF4 \uC5C6\uC74C',
+    tags: ['\uCE58\uD0A8', '\uD30C\uB2ED', '\uC57C\uC2DD'],
+    icon: Icons.fastfood_rounded,
     color: Color(0xFF46A67E),
+    imageAsset: 'assets/images/solo_places/michin_padak.png',
+    phone: '031-676-9298',
   ),
   SoloPlace(
     id: 'gamdong-katsu',
-    baseScore: 4.3,
-    name: '\uAC10\uB3D9\uAE4C\uC2A4',
+    baseScore: 4.4,
+    name: '\uAC10\uB3D9\uAE4C\uC2A4 \uC548\uC131\uC911\uB300\uC810',
     category: '\uB3C8\uAE4C\uC2A4',
     group: '\uC77C\uC2DD',
     distance: '\uB3C4\uBCF4 4\uBD84',
     address:
-        '\uACBD\uAE30 \uC548\uC131\uC2DC \uB300\uB355\uBA74 \uB300\uD559\uB85C 21 1\uCE35',
-    hours: '11:00 ~ 20:00',
-    menu: '\uB3C8\uAE4C\uC2A4 \uC815\uC2DD - 7,900\uC6D0',
+        '\uACBD\uAE30 \uC548\uC131\uC2DC \uB300\uB355\uBA74 \uB300\uD55910\uAE38 21 1\uCE35',
+    hours: '\uB9E4\uC77C 11:00~20:00',
+    menu: '\uC548\uC2EC\uB3C8\uAE4C\uC2A4 - 13,500\uC6D0',
     tags: [
       '1\uC778 \uBA54\uB274',
       '\uB4E0\uB4E0\uD55C \uBA54\uB274',
-      '\uC0AC\uC7A5 \uAC15\uCD94'
+      '\uB3C8\uAE4C\uC2A4'
     ],
     icon: Icons.set_meal_rounded,
     color: Color(0xFF6A8DFF),
+    imageAsset: 'assets/images/solo_places/gamdong_katsu.png',
+    phone: '031-677-4433',
   ),
   SoloPlace(
-    id: 'gyodong-jjamppong',
-    baseScore: 4.0,
-    name: '\uBA85\uAC00\uAD50\uB3D9\uC9EC\uBF55',
-    category: '\uC911\uC2DD',
-    group: '\uC911\uC2DD',
+    id: 'myeongdong-jjigae',
+    baseScore: 4.3,
+    name:
+        '\uC6D0\uC870\uBA85\uB3D9\uCC0C\uAC1C\uB9C8\uC744 \uC548\uC131\uC911\uB300\uC810',
+    category: '\uAE40\uCE58\uCC0C\uAC1C',
+    group: '\uCC0C\uAC1C',
     distance: '\uB3C4\uBCF4 6\uBD84',
     address:
-        '\uACBD\uAE30 \uC548\uC131\uC2DC \uB300\uB355\uBA74 \uB300\uD559\uB85C 25',
-    hours: '11:00 ~ 21:30',
-    menu: '\uBC31\uC9EC\uBF55 - 10,000\uC6D0',
+        '\uACBD\uAE30 \uC548\uC131\uC2DC \uB300\uB355\uBA74 \uB300\uD5593\uAE38 20 1\uCE35',
+    hours:
+        '\uC6D4~\uAE08 12:00~21:00 · \uC77C 12:00~21:00 · 15:00~17:00 \uBE0C\uB808\uC774\uD06C · 20:00 \uB77C\uC2A4\uD2B8\uC624\uB354 · \uD1A0 \uD734\uBB34',
+    menu: '\uC591\uD47C\uC774 \uAE40\uCE58\uCC0C\uAC1C 2\uC778 - 16,000\uC6D0',
     tags: [
-      '1\uC778 \uBA54\uB274',
-      '\uAC00\uC131\uBE44',
-      '\uD0A4\uC624\uC2A4\uD06C \uC8FC\uBB38'
+      '\uCC0C\uAC1C',
+      '\uAE40\uCE58\uCC0C\uAC1C',
+      '\uB4E0\uB4E0\uD55C \uBA54\uB274'
     ],
-    icon: Icons.ramen_dining_rounded,
+    icon: Icons.soup_kitchen_rounded,
     color: Color(0xFFD94F4F),
+    imageAsset: 'assets/images/solo_places/myeongdong_jjigae.png',
+    phone: '031-676-5551',
   ),
   SoloPlace(
-    id: 'my-chicken',
-    baseScore: 4.1,
-    name: '\uB9C8\uC774\uCE58\uD0A8',
-    category: '\uCE58\uD0A8',
-    group: '\uCE58\uD0A8',
-    distance: '\uB3C4\uBCF4 7\uBD84',
+    id: 'gogi-baksa-naengmyeon',
+    baseScore: 4.2,
+    name:
+        '\uACE0\uAE30\uBC15\uC0AC\uB0C9\uBA74 \uCD08\uACC4\uB9C9\uAD6D\uC218 \uC548\uC131\uC810',
+    category: '\uB0C9\uBA74 \uB9C9\uAD6D\uC218',
+    group: '\uD55C\uC2DD',
+    distance: '\uB3C4\uBCF4 8\uBD84',
     address:
-        '\uACBD\uAE30 \uC548\uC131\uC2DC \uB300\uB355\uBA74 \uC911\uC559\uAE38 18',
-    hours: '12:00 ~ 23:00',
-    menu: '\uC2DC\uB0B4\uCE58\uD0A8 1\uC778 \uC138\uD2B8 - 8,900\uC6D0',
-    tags: ['1\uC778 \uC138\uD2B8', '\uBC30\uB2EC \uAC00\uB2A5', '\uC57C\uC2DD'],
-    icon: Icons.fastfood_rounded,
-    color: Color(0xFF8E6DE8),
+        '\uACBD\uAE30 \uC548\uC131\uC2DC \uB300\uB355\uBA74 \uC911\uC559\uB300\uD559\uAD50 51',
+    hours:
+        '\uB9E4\uC77C 11:00~21:00 · 20:30 \uB77C\uC2A4\uD2B8\uC624\uB354 · 11~2\uC6D4 \uB3D9\uC808\uAE30 \uD734\uBB34',
+    menu: '\uBB3C\uB0C9\uBA74+\uC22F\uBD88\uACE0\uAE30 - 11,000\uC6D0',
+    tags: ['1\uC778 \uBA54\uB274', '\uB0C9\uBA74', '\uC22F\uBD88\uACE0\uAE30'],
+    icon: Icons.ramen_dining_rounded,
+    color: Color(0xFF4F9ED9),
+    imageAsset: 'assets/images/solo_places/gogi_baksa_naengmyeon.png',
+    phone: '0507-1444-5525',
+  ),
+  SoloPlace(
+    id: 'mobaksa-budae-jjigae',
+    baseScore: 4.5,
+    name: '\uBAA8\uBC15\uC0AC\uBD80\uB300\uCC0C\uAC1C \uC548\uC131\uBCF8\uC810',
+    category: '\uBD80\uB300\uCC0C\uAC1C',
+    group: '\uCC0C\uAC1C',
+    distance: '\uB3C4\uBCF4 12\uBD84',
+    address:
+        '\uACBD\uAE30 \uC548\uC131\uC2DC \uB300\uB355\uBA74 \uC11C\uB3D9\uB300\uB85C 4653',
+    hours:
+        '\uB9E4\uC77C 06:00~21:30 · 20:45 \uB77C\uC2A4\uD2B8\uC624\uB354 · \uB3D9\uC808\uAE30 07:00~21:00 · 20:15 \uB77C\uC2A4\uD2B8\uC624\uB354',
+    menu:
+        '\uBCC4\uBBF8\uBD80\uB300\uCC0C\uAC1C\uC804\uACE8 2\uC778 - 24,000\uC6D0',
+    tags: [
+      '\uCC0C\uAC1C',
+      '\uBD80\uB300\uCC0C\uAC1C',
+      '\uC544\uCE68 \uC2DD\uC0AC'
+    ],
+    icon: Icons.soup_kitchen_rounded,
+    color: Color(0xFFE06B45),
+    imageAsset: 'assets/images/solo_places/mobaksa_budae_jjigae.png',
+    phone: '031-676-1508',
+  ),
+  SoloPlace(
+    id: 'haru-poke',
+    baseScore: 4.4,
+    name: '\uD558\uB8E8\uD3EC\uCF00 \uC548\uC131\uC911\uC559\uB300\uC810',
+    category: '\uD3EC\uCF00 \uC0D0\uB7EC\uB4DC',
+    group: '\uC591\uC2DD',
+    distance: '\uB3C4\uBCF4 5\uBD84',
+    address:
+        '\uACBD\uAE30 \uC548\uC131\uC2DC \uB300\uB355\uBA74 \uB300\uD5593\uAE38 19 102\uD638',
+    hours: '\uB9E4\uC77C 10:00~21:00 · 20:30 \uB77C\uC2A4\uD2B8\uC624\uB354',
+    menu:
+        '\uBE44\uBC95\uC219\uC131 \uC5F0\uC5B4\uC7A5 \uBA54\uB274 - 12,800\uC6D0',
+    tags: [
+      '1\uC778 \uBA54\uB274',
+      '\uD3EC\uCF00',
+      '\uAC00\uBCCD\uC6B4 \uD55C \uB07C'
+    ],
+    icon: Icons.rice_bowl_rounded,
+    color: Color(0xFF4FBF8F),
+    imageAsset: 'assets/images/solo_places/haru_poke.png',
+    phone: '0507-1468-5254',
   ),
 ];
 

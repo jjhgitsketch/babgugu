@@ -249,6 +249,16 @@ create table if not exists public.balance_game_votes (
   created_at timestamptz not null default now(),
   primary key (game_date, user_id)
 );
+create table if not exists public.ai_recommendation_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.users(id) on delete cascade,
+  user_message text not null,
+  recommended_place_id text,
+  recommended_menu text,
+  reason text,
+  response_json jsonb,
+  created_at timestamptz not null default now()
+);
 
 create index if not exists users_school_email_idx on public.users (school_email);
 create index if not exists student_email_verifications_lookup_idx on public.student_email_verifications (user_id, email, created_at desc);
@@ -269,6 +279,7 @@ create index if not exists trust_reviews_reviewed_user_id_idx on public.trust_re
 create index if not exists solo_place_reviews_place_id_idx on public.solo_place_reviews(place_id);
 create index if not exists solo_place_reviews_user_id_idx on public.solo_place_reviews(user_id);
 create index if not exists balance_game_votes_game_date_idx on public.balance_game_votes(game_date);
+create index if not exists ai_recommendation_logs_user_id_idx on public.ai_recommendation_logs(user_id, created_at desc);
 
 -- Realtime publications used by the app.
 do $$
@@ -329,6 +340,7 @@ alter table public.trust_reviews disable row level security;
 alter table public.student_email_verifications enable row level security;
 alter table public.solo_place_reviews enable row level security;
 alter table public.balance_game_votes enable row level security;
+alter table public.ai_recommendation_logs enable row level security;
 
 drop policy if exists "Solo place reviews are readable" on public.solo_place_reviews;
 drop policy if exists "Users can create their own solo place reviews" on public.solo_place_reviews;
@@ -363,6 +375,20 @@ using (true);
 
 create policy "Users can create their own balance game vote"
 on public.balance_game_votes
+for insert
+to authenticated
+with check (auth.uid() = user_id);
+drop policy if exists "Users can read their own AI recommendation logs" on public.ai_recommendation_logs;
+drop policy if exists "Users can create their own AI recommendation logs" on public.ai_recommendation_logs;
+
+create policy "Users can read their own AI recommendation logs"
+on public.ai_recommendation_logs
+for select
+to authenticated
+using (auth.uid() = user_id);
+
+create policy "Users can create their own AI recommendation logs"
+on public.ai_recommendation_logs
 for insert
 to authenticated
 with check (auth.uid() = user_id);

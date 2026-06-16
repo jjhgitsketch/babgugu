@@ -184,7 +184,7 @@ class _SavedMeetingCard extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(13),
       child: Container(
-        height: 118,
+        height: 140,
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(13),
@@ -206,7 +206,7 @@ class _SavedMeetingCard extends StatelessWidget {
             ),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 11, 6, 10),
+                padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -262,7 +262,7 @@ class _SavedMeetingCard extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 5),
+                    const SizedBox(height: 4),
                     Text(
                       meeting.title,
                       maxLines: 1,
@@ -272,7 +272,7 @@ class _SavedMeetingCard extends StatelessWidget {
                         fontWeight: FontWeight.w900,
                       ),
                     ),
-                    const SizedBox(height: 7),
+                    const SizedBox(height: 5),
                     Text(
                       _tagLine(meeting.tags),
                       maxLines: 1,

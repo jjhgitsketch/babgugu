@@ -502,6 +502,7 @@ class _MapScreenState extends State<MapScreen> {
   List<_MeetingWithDistance> _nearbyMeetings = [];
   MeetingModel? _selectedMeeting;
   String _searchQuery = '';
+  String _selectedFilter = _MapFilterChips.allFilter;
 
   Position? _currentPosition;
   bool _loading = true;
@@ -615,9 +616,34 @@ class _MapScreenState extends State<MapScreen> {
     List<_MeetingWithDistance> source,
     String query,
   ) {
+    var filtered = List<_MeetingWithDistance>.from(source);
+
+    if (_selectedFilter == _MapFilterChips.restaurantFilter) {
+      filtered = filtered
+          .where((item) => item.meeting.type == MeetingType.restaurant)
+          .toList();
+    } else if (_selectedFilter == _MapFilterChips.deliveryFilter) {
+      filtered = filtered
+          .where((item) => item.meeting.type == MeetingType.delivery)
+          .toList();
+    } else if (_selectedFilter == _MapFilterChips.soloFilter) {
+      filtered = filtered.where((item) {
+        final meeting = item.meeting;
+        return meeting.maxMembers <= 2 ||
+            meeting.tags.any((tag) => tag.contains('\uD63C\uBC25')) ||
+            meeting.title.contains('\uD63C\uBC25');
+      }).toList();
+    } else if (_selectedFilter == _MapFilterChips.openFilter) {
+      filtered = filtered
+          .where((item) =>
+              item.meeting.status == MeetingStatus.open &&
+              item.meeting.currentMembers < item.meeting.maxMembers)
+          .toList();
+    }
+
     final normalized = query.trim().toLowerCase();
-    if (normalized.isEmpty) return List<_MeetingWithDistance>.from(source);
-    return source.where((item) {
+    if (normalized.isEmpty) return filtered;
+    return filtered.where((item) {
       final meeting = item.meeting;
       return meeting.title.toLowerCase().contains(normalized) ||
           meeting.description.toLowerCase().contains(normalized) ||
@@ -631,6 +657,20 @@ class _MapScreenState extends State<MapScreen> {
     setState(() {
       _searchQuery = value;
       _nearbyMeetings = _filterMeetings(_allMeetings, value);
+      if (_selectedMeeting != null &&
+          !_nearbyMeetings
+              .any((item) => item.meeting.id == _selectedMeeting!.id)) {
+        _selectedMeeting = null;
+      }
+    });
+    _addMarkers();
+  }
+
+  void _onFilterSelected(String filter) {
+    if (_selectedFilter == filter) return;
+    setState(() {
+      _selectedFilter = filter;
+      _nearbyMeetings = _filterMeetings(_allMeetings, _searchQuery);
       if (_selectedMeeting != null &&
           !_nearbyMeetings
               .any((item) => item.meeting.id == _selectedMeeting!.id)) {
@@ -880,7 +920,10 @@ class _MapScreenState extends State<MapScreen> {
                                 ],
                               ),
                             ),
-                            const _MapFilterChips(),
+                            _MapFilterChips(
+                              selected: _selectedFilter,
+                              onSelected: _onFilterSelected,
+                            ),
                             const SizedBox(height: 10),
                             Expanded(
                               child: _loading
@@ -1075,18 +1118,29 @@ class _MapSearchBoxState extends State<_MapSearchBox> {
 }
 
 class _MapFilterChips extends StatelessWidget {
-  const _MapFilterChips();
+  static const allFilter = '\uC804\uCCB4 \uC7A5\uC18C';
+  static const restaurantFilter = '\uC2DD\uB2F9';
+  static const deliveryFilter = '\uBC30\uB2EC';
+  static const soloFilter = '1\uC778 \uC2DD\uB2F9';
+  static const openFilter = '\uC9C4\uD589 \uC911 \uBAA8\uC784';
+
+  final String selected;
+  final ValueChanged<String> onSelected;
+
+  const _MapFilterChips({required this.selected, required this.onSelected});
 
   @override
   Widget build(BuildContext context) {
     const chips = [
-      ('\uC804\uCCB4 \uC7A5\uC18C', Icons.explore_rounded, true),
-      ('1\uC778 \uC2DD\uB2F9', Icons.person_rounded, false),
-      ('\uC9C4\uD589 \uC911 \uBAA8\uC784', Icons.groups_rounded, false),
+      (allFilter, Icons.explore_rounded),
+      (restaurantFilter, Icons.restaurant_rounded),
+      (deliveryFilter, Icons.delivery_dining_rounded),
+      (soloFilter, Icons.person_rounded),
+      (openFilter, Icons.groups_rounded),
     ];
 
     return SizedBox(
-      height: 23,
+      height: 28,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -1094,37 +1148,40 @@ class _MapFilterChips extends StatelessWidget {
         separatorBuilder: (_, __) => const SizedBox(width: 7),
         itemBuilder: (context, index) {
           final chip = chips[index];
-          final active = chip.$3;
-          return Container(
-            width: 68,
-            height: 23,
-            padding: const EdgeInsets.symmetric(horizontal: 5),
-            decoration: BoxDecoration(
-              color: active ? const Color(0xFF444EF8) : const Color(0xFFDDE5F3),
-              borderRadius: BorderRadius.circular(19),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  chip.$2,
-                  size: index == 0 ? 14 : 12,
-                  color: active ? Colors.white : const Color(0xFF444EF8),
-                ),
-                const SizedBox(width: 3),
-                Flexible(
-                  child: Text(
+          final active = selected == chip.$1;
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => onSelected(chip.$1),
+            child: Container(
+              height: 28,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                color:
+                    active ? const Color(0xFF444EF8) : const Color(0xFFDDE5F3),
+                borderRadius: BorderRadius.circular(19),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    chip.$2,
+                    size: index == 0 ? 14 : 12,
+                    color: active ? Colors.white : const Color(0xFF444EF8),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
                     chip.$1,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: active ? FontWeight.w600 : FontWeight.w800,
+                      fontSize: 10,
+                      fontWeight: active ? FontWeight.w700 : FontWeight.w800,
                       color: active ? Colors.white : const Color(0xFF444EF8),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           );
         },

@@ -3,6 +3,7 @@
 
 drop table if exists public.notifications cascade;
 drop table if exists public.meal_history cascade;
+drop table if exists public.ai_recommendation_logs cascade;
 drop table if exists public.solo_place_reviews cascade;
 drop table if exists public.trust_reviews cascade;
 drop table if exists public.reviews cascade;
